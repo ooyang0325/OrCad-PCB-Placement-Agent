@@ -38,7 +38,19 @@ with distinct `source_kind` values. Missing/stale/corrupt supplements produce
 warnings without disabling real bundled expertise. `pcb_reference_page` is
 strictly for original PDF excerpts and errors when no local index is configured.
 Install `.[knowledge]` only when extracting PDFs; catalog notices expose gaps.
-The server has sixteen tools; all reference operations are read-only.
+The server has twenty tools; all reference operations are read-only.
+
+`pcb_inspect_libraries`, `pcb_prepare_library_load`, `pcb_load_libraries`, and
+`pcb_library_load_status` implement separate [approved library setup](library-loading.md).
+The LOAD tool is default-disabled with other portable writes, uses its own
+hidden exact-human approval, and does not place components or save the board.
+The operator first uses `attach --library-setup` for explicitly staged,
+all-unplaced managed-board-v1 inventory. Preparation is limited to a verified
+bounded staged PSM/PAD/FSM/SSM cache. LOAD is non-atomic and in memory only,
+with partial/uncertain outcomes possible: it is not import, existing-definition
+refresh, placement, Save, persistence or global configuration. Full
+`pcb_inspect` is still required afterward and may reject complex geometry.
+Native LOAD acceptance is pending.
 
 `pcb_plan_placement`, `pcb_prepare_next_placement`, and `pcb_placement_status`
 implement the [closed-loop mission workflow](placement-missions.md). They
@@ -58,16 +70,20 @@ confirmation, per-call override, or elicitation round trip. The controller
 still verifies the proposal, visual binding, session, source board, and fresh
 native scene before mutation.
 
-Save remains separate. Only the operator may add `--allow-interactive-writes`,
-and only when the client uses genuine interactive input with no automatic
-elicitation answers. The flag is not a model tool argument, and no installer or
-marketplace manifest enables it. The Save response must exactly match
-`SAVE <save-proposal-id>`; decline, cancellation, missing UI support, or a wrong
-answer does not save.
+Library LOAD and revision SAVE remain separate and approval-gated. Only the operator
+may add `--allow-interactive-writes`, and only when the client uses genuine interactive
+input with no automatic elicitation answers. The flag is not a model tool argument, and no
+installer or marketplace manifest enables it. The response must exactly match the
+selected operation's `LOAD <load-proposal-id>` or separately prepared
+`SAVE <save-proposal-id>`. Decline, cancellation, missing form elicitation, or an
+unavailable human do not dispatch the mutation. Copilot Autopilot and Claude
+auto-answering elicitation hooks are specifically unsupported for writes.
 
 The controller consumes a placement dispatch once. A transport retry cannot send a second
 placement. Missing post-images preserve the recorded native outcome; use the
-bounded recovery tools rather than replaying Apply.
+bounded recovery tools rather than replaying Apply, LOAD or SAVE. Reconcile a
+partial/uncertain LOAD with `pcb_library_load_status`; do not claim atomic
+rollback or retry to recover a missing image.
 
 ## Installed packages
 

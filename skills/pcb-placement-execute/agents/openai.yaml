@@ -1,5 +1,5 @@
 interface:
   display_name: "PCB placement executor"
-  short_description: "Autonomously execute an exact reviewed pose"
+  short_description: "Autonomously execute an exact reviewed pose; LOAD and Save remain approved"
 policy:
   allow_implicit_invocation: false

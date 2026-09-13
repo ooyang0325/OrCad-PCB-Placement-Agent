@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "orcad-placement",
-  "version": "0.6.0",
-  "description": "Windows-only Cadence PCB missions with native images and bundled expertise. Exact reviewed placement proposals dispatch autonomously; revision saves remain human-approved.",
+  "version": "0.9.0",
+  "description": "Windows-only Cadence PCB missions with native images and bundled expertise. Exact reviewed placement proposals dispatch autonomously; library LOAD and revision saves remain human-approved.",
   "author": {
     "name": "oo_yang",
     "url": "https://github.com/ooyang0325"
