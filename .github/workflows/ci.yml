@@ -10,6 +10,9 @@ jobs:
   test:
     name: Tests (Windows, Python 3.12)
     runs-on: windows-latest
+    env:
+      TEMP: ${{ runner.temp }}
+      TMP: ${{ runner.temp }}
 
     steps:
       - name: Check out repository
@@ -28,8 +31,12 @@ jobs:
 
       - name: Run unit tests
         run: |
+          $env:TEMP = (Get-Item $env:TEMP).FullName
+          $env:TMP = $env:TEMP
           python -m unittest discover -s tests -v
 
       - name: Verify package installation plan
         run: |
+          $env:TEMP = (Get-Item $env:TEMP).FullName
+          $env:TMP = $env:TEMP
           python scripts/install.py --plan
