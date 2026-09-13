@@ -1,4 +1,4 @@
-"""Synthetic approval/asset tests; never native Cadence execution."""
+"""Synthetic dispatch/asset tests; never native Cadence execution."""
 
 import json
 from dataclasses import replace
@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from orcad_placement_agent.agent_tools import AgentActions
 from orcad_placement_agent.library_load import (
-    _unchanged_cache, approve_libraries, library_status, load_library_proposal, pinned_library_bundle,
+    _unchanged_cache, apply_libraries, library_status, load_library_proposal, pinned_library_bundle,
     prepare_libraries, setup_inventory,
 )
 from orcad_placement_agent.protocol import ProtocolError, Receipt, Request, encode_rows
@@ -64,7 +64,7 @@ class LibraryLoadTests(unittest.TestCase):
         with pinned_library_bundle(self.session, proposal):
             pass
         self.assertEqual(library_status(self.session, digest)["status"], "not_dispatched")
-        self.assertFalse(list(self.session.root.glob("library-approval-*")))
+        self.assertFalse(list(self.session.root.glob("library-dispatch-*")))
         self.assertEqual(before, {path.name: path.read_bytes() for path in self.project.iterdir()})
 
     def test_setup_inventory_is_distinct_from_placement_and_save_authority(self):
@@ -112,24 +112,24 @@ class LibraryLoadTests(unittest.TestCase):
         with self.assertRaisesRegex(SessionError, "absent"):
             prepare_libraries(missing, library_snapshot(missing))
 
-    def test_cache_and_control_changes_cannot_reuse_an_approval(self):
+    def test_cache_and_control_changes_prevent_dispatch(self):
         digest, proposal = prepare_libraries(self.session, self.snapshot)
         cached = self.session.root / f"library-{proposal['cache_id']}" / "part_a.psm"
         cached.write_bytes(b"changed")
         with patch.object(self.session, "exchange") as native:
             with self.assertRaises((ProtocolError, SessionError)):
-                approve_libraries(self.session, digest, f"LOAD {digest}")
+                apply_libraries(self.session, digest)
         native.assert_not_called()
-        self.assertFalse((self.session.root / f"library-approval-{digest}.json").exists())
+        self.assertEqual(list(self.session.root.glob(f"library-dispatch-{digest}.json")), [])
         digest, proposal = prepare_libraries(self.session, self.snapshot)
         control = self.session.root / f"library-{proposal['cache_id']}.csv"
         control.write_bytes(control.read_bytes().replace(b"PART_A", b"PART_C"))
         with patch.object(self.session, "exchange") as native:
             with self.assertRaisesRegex(ProtocolError, "control file changed"):
-                approve_libraries(self.session, digest, f"LOAD {digest}")
+                apply_libraries(self.session, digest)
         native.assert_not_called()
 
-    def test_exact_approval_is_separate_single_use_and_confirmed_after_return(self):
+    def test_autonomous_dispatch_is_single_use_and_verified_after_return(self):
         digest, _ = prepare_libraries(self.session, self.snapshot)
         calls = []
 
@@ -142,19 +142,18 @@ class LibraryLoadTests(unittest.TestCase):
             return receipt
 
         with patch.object(self.session, "exchange", side_effect=exchange):
-            for answer in ("", "yes", f"APPLY {digest}", f"SAVE {digest}"):
-                with self.assertRaises(SessionError):
-                    approve_libraries(self.session, digest, answer)
-            result = approve_libraries(self.session, digest, f"LOAD {digest}")
+            result = apply_libraries(self.session, digest)
             self.assertEqual(result.status, "libraries_loaded")
-            with self.assertRaises(FileExistsError):
-                approve_libraries(self.session, digest, f"LOAD {digest}")
+            with self.assertRaises(SessionError):
+                apply_libraries(self.session, digest)
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0].operation, "load_libraries")
         status = library_status(self.session, digest)
         self.assertEqual(status["status"], "libraries_loaded")
         self.assertFalse(status["placement_ready"])
         self.assertFalse(status["saved"])
+        record = self.session._read_json(f"library-dispatch-{digest}.json")
+        self.assertEqual(set(record), {"proposal", "request_id"})
 
     def test_partial_native_inventory_is_reported_without_claiming_readiness(self):
         digest, _ = prepare_libraries(self.session, self.snapshot)
@@ -167,7 +166,7 @@ class LibraryLoadTests(unittest.TestCase):
             return receipt
 
         with patch.object(self.session, "exchange", side_effect=exchange):
-            approve_libraries(self.session, digest, f"LOAD {digest}")
+            apply_libraries(self.session, digest)
         status = library_status(self.session, digest)
         self.assertEqual(status["status"], "library_partial")
         self.assertFalse(status["placement_ready"] or status["saved"])
@@ -181,7 +180,7 @@ class LibraryLoadTests(unittest.TestCase):
 
         with patch.object(self.session, "exchange", side_effect=exchange):
             with self.assertRaisesRegex(ProtocolError, "actual native"):
-                approve_libraries(self.session, digest, f"LOAD {digest}")
+                apply_libraries(self.session, digest)
         self.assertFalse((self.session.root / f"library-verified-{digest}.json").exists())
 
     def test_cache_monitor_detects_even_a_transient_new_dependency(self):
@@ -204,7 +203,7 @@ class LibraryLoadTests(unittest.TestCase):
 
         with patch.object(self.session, "exchange", side_effect=exchange):
             with self.assertRaisesRegex(SessionError, "cache changed"):
-                approve_libraries(self.session, digest, f"LOAD {digest}")
+                apply_libraries(self.session, digest)
         self.assertTrue(library_status(self.session, digest)["requires_restaging"])
         with patch.object(self.session, "editor"), patch.object(self.session.transport, "send") as send:
             for operation in ("apply", "save", "load_libraries"):
@@ -219,9 +218,11 @@ class LibraryLoadTests(unittest.TestCase):
         digest, _ = prepare_libraries(self.session, self.snapshot)
         with patch.object(self.session, "exchange", side_effect=IndeterminateDelivery("Native may still be loading")):
             with self.assertRaises(IndeterminateDelivery):
-                approve_libraries(self.session, digest, f"LOAD {digest}")
-        approval = self.session._read_json(f"library-approval-{digest}.json")
-        receipt = Receipt(self.session.nonce, approval["request_id"], "libraries_loaded", "Late fake outcome", ())
+                apply_libraries(self.session, digest)
+            with self.assertRaises(SessionError):
+                apply_libraries(self.session, digest)
+        record = self.session._read_json(f"library-dispatch-{digest}.json")
+        receipt = Receipt(self.session.nonce, record["request_id"], "libraries_loaded", "Late fake outcome", ())
         write_json(self.session.root / f"{receipt.request_id}.receipt.json", receipt.to_dict())
         status = library_status(self.session, digest)
         self.assertEqual(status["status"], "indeterminate")
@@ -248,6 +249,19 @@ class LibraryLoadTests(unittest.TestCase):
         self.assertTrue((self.session.root / "pending.json").exists())
         self.assertFalse((self.session.root / f"library-verified-{digest}.json").exists())
         send.assert_not_called()
+
+    def test_legacy_load_record_blocks_replay_and_future_writes(self):
+        digest, _ = prepare_libraries(self.session, self.snapshot)
+        write_json(self.session.root / f"library-approval-{digest}.json",
+                   {"proposal": digest, "request_id": "7" * 32, "confirmation": f"LOAD {digest}"})
+        with self.assertRaises(SessionError):
+            apply_libraries(self.session, digest)
+        self.assertEqual(library_status(self.session, digest)["status"], "indeterminate")
+        with patch.object(self.session, "editor"), patch.object(self.session.transport, "send") as send:
+            with self.assertRaisesRegex(SessionError, "asset-lock continuity"):
+                self.session.exchange(Request(self.session.nonce, "8" * 32, "save", "2" * 32,
+                                              destination="revision-" + "9" * 32 + ".brd"))
+            send.assert_not_called()
 
     def test_library_requests_cannot_smuggle_placement_or_arbitrary_paths(self):
         Request(self.session.nonce, "3" * 32, "library_snapshot").encode()
@@ -300,9 +314,15 @@ class LibraryLoadTests(unittest.TestCase):
             self.assertIn("part_a.psm", prepared["summary"])
             self.assertEqual(commands, ["opa_library_snapshot"] * 3)
             proposal = prepared["proposal_sha256"]
+            evidence = service.dispatch({"action": "read-proposal", "session": self.session.root.name,
+                                         "kind": "library", "proposal": proposal})
+            self.assertEqual(evidence["freshness"], "archived")
+            self.assertEqual(evidence["visual"], prepared["visual"])
+            self.assertEqual(evidence["packages"], prepared["packages"])
+            self.assertEqual(commands, ["opa_library_snapshot"] * 3)
             service.library_capture = lambda _session: (_ for _ in ()).throw(VisualError("Post-image failed"))
             result = service.dispatch({"action": "load-libraries", "session": self.session.root.name,
-                                       "proposal": proposal, "confirmation": f"LOAD {proposal}"})
+                                       "proposal": proposal})
             self.assertEqual(result["status"], "libraries_loaded")
             self.assertIn("visual_error", result)
             status = service.dispatch({"action": "library-status", "session": self.session.root.name,

@@ -100,6 +100,38 @@ class AgentActionTests(unittest.TestCase):
         self.assertEqual(self.session.requests, [])
         self.assertIn("(12, 12)", result["summary"])
 
+    def test_read_proposal_returns_exact_archived_image_without_native_requests(self):
+        prepared = self.prepare()
+        captured = self.captures
+        evidence = self.service.dispatch({
+            "action": "read-proposal", "session": self.board.name,
+            "kind": "placement", "proposal": prepared["proposal_sha256"],
+        })
+        self.assertEqual(evidence["status"], "proposal_evidence")
+        self.assertEqual(evidence["freshness"], "archived")
+        self.assertEqual(evidence["visual"], prepared["visual"])
+        self.assertEqual(evidence["summary"], prepared["summary"])
+        self.assertEqual(self.captures, captured)
+        self.assertEqual(self.session.requests, [])
+        for kind in ("library", "save"):
+            with self.assertRaises(FileNotFoundError):
+                self.service.dispatch({
+                    "action": "read-proposal", "session": self.board.name,
+                    "kind": kind, "proposal": prepared["proposal_sha256"],
+                })
+        with self.assertRaises(AgentActionError):
+            self.service.dispatch({
+                "action": "read-proposal", "session": self.board.name,
+                "kind": "eval", "proposal": prepared["proposal_sha256"],
+            })
+        Path(prepared["visual"]["image_path"]).unlink()
+        with self.assertRaises(AgentActionError):
+            self.service.dispatch({
+                "action": "read-proposal", "session": self.board.name,
+                "kind": "placement", "proposal": prepared["proposal_sha256"],
+            })
+        self.assertEqual(self.session.requests, [])
+
     def test_paths_unknown_fields_and_arbitrary_actions_are_rejected(self):
         for request in [
             {"action": "inspect", "session": "..\\board-fixture"},

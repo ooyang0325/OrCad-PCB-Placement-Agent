@@ -16,11 +16,16 @@ def backend_capabilities() -> dict[str, object]:
         "logical_design_import": False,
         "approved_library_loading": True,
         "library_setup_model": "library-setup-v1",
-        "library_setup_scope": "All logical components unplaced; verified staged assets only; exact human LOAD approval; no implicit placement, import, Save or global settings.",
+        "library_setup_scope": "All logical components unplaced; verified staged assets only; exact single-use autonomous LOAD; no implicit placement, import, Save or global settings.",
         "attachment_verification": "Complete exported-byte SHA-256 by default. Explicit --allow-unverified-3d staging may retain only metadata for 3D:.../ACIS attachments; no 3D preservation or mechanical-clearance claim.",
         "initial_component_placement": True,
         "initial_placement_model": "managed-board-v1",
         "placement_missions": True,
+        "placement_intake_routing": True,
+        "archived_proposal_images": True,
+        "agent_editor_setup": False,
+        "unattended_library_loading": True,
+        "unattended_revision_save": True,
         "grouped_constraints": True,
         "group_scope": "Flat room drawings and NET_GROUPs; named physical/spacing/same-net Csets; no nested/module/class-region overrides.",
         "placement_room_policy": "Preserve all native tags and drawings; constrain explicitly matching labels; report unmatched labels without inventing regions.",
@@ -29,6 +34,11 @@ def backend_capabilities() -> dict[str, object]:
         "move_existing_component": True,
         "rotate_existing_component": True,
         "supported_target_angles": [0, 90, 180, 270],
+        "supported_smt_pad_figures": [
+            "RECTANGLE", "SQUARE", "CIRCLE", "OBLONG_X", "OBLONG_Y",
+            "ROUNDED_RECTANGLE", "CHAMFERED_RECTANGLE",
+        ],
+        "smt_pad_geometry": "Top-side regular and mask pads with a complete native boundary, corner metadata and hole-free dimensions; drilled/slot and external SHAPE/FLASH pads remain unsupported. Native acceptance of extended SMT variants is pending.",
         "arbitrary_board_writes": False,
         "route_generation": False,
         "routing_feasibility_verification": False,
@@ -40,7 +50,8 @@ def backend_capabilities() -> dict[str, object]:
         "human_approval_required": False,
         "model_can_authorize_changes": True,
         "portable_writes_enabled_by_default": True,
-        "save_human_approval_required": True,
+        "save_human_approval_required": False,
+        "library_human_approval_required": False,
         "initial_placement_requirements": (
             "Explicit managed-board-v1 staging; nonempty imported logical inventory and embedded simple "
             "top-side SMT footprints; simple closed outline/keepin contours and rectangular keepouts; "
@@ -48,7 +59,7 @@ def backend_capabilities() -> dict[str, object]:
             "No routing, package/unattached text, unmapped logical functions, nested/component groups, "
             "advanced pads, electrical Csets or class/region constraint overrides. "
             "Native attachments must be readable within the bounded exported-byte model, except explicitly opted-in metadata-only embedded 3D attachments. "
-            "Missing definitions require the separate approved library-setup workflow; raw empty-design import remains an intake blocker. "
+            "Missing definitions require the separate library-setup workflow; raw empty-design import remains an intake blocker. "
             "The legacy fixture model does not initially place components."
         ),
     }

@@ -32,31 +32,37 @@ class WorkflowCLITests(unittest.TestCase):
         ):
             return main(args)
 
-    def test_save_without_exact_confirmation_never_dispatches_save(self):
-        with patch("builtins.input", return_value="yes"):
+    def test_rejected_snapshot_never_dispatches_save(self):
+        self.session.exchange.return_value = Receipt("1" * 32, "2" * 32, "rejected", "Stale board", ())
+        with patch("builtins.input", side_effect=AssertionError("Unexpected prompt")) as prompt:
             code = self.run_cli(["save", "--session", r"C:\isolated"])
-        self.assertEqual(code, 2)
+        self.assertEqual(code, 1)
+        prompt.assert_not_called()
         self.assertEqual(self.session.exchange.call_count, 1)
         self.assertEqual(self.session.exchange.call_args.args[0].operation, "snapshot")
 
-    def test_save_confirmation_has_one_fresh_managed_destination(self):
+    def test_autonomous_save_has_one_fresh_managed_destination(self):
         snapshot = self.session.exchange.return_value
         self.session.exchange.side_effect = [
             snapshot, Receipt("1" * 32, "3" * 32, "saved", "Saved", ())
         ]
-        with patch("builtins.input", return_value="SAVE " + "2" * 32):
+        with patch("builtins.input", side_effect=AssertionError("Unexpected prompt")) as prompt:
             code = self.run_cli(["save", "--session", r"C:\isolated"])
         self.assertEqual(code, 0)
+        prompt.assert_not_called()
         request = self.session.exchange.call_args.args[0]
         self.assertEqual(request.operation, "save")
         self.assertEqual(request.snapshot_id, "2" * 32)
         self.assertRegex(request.destination, r"^revision-[0-9a-f]{32}\.brd$")
 
-    def test_no_stdin_cancels_save(self):
-        with patch("builtins.input", side_effect=EOFError):
+    def test_no_stdin_is_required_to_save(self):
+        self.session.exchange.side_effect = [self.session.exchange.return_value,
+                                            Receipt("1" * 32, "3" * 32, "saved", "Saved", ())]
+        with patch("builtins.input", side_effect=EOFError) as prompt:
             code = self.run_cli(["save", "--session", r"C:\isolated"])
-        self.assertEqual(code, 1)
-        self.assertEqual(self.session.exchange.call_count, 1)
+        self.assertEqual(code, 0)
+        self.assertEqual(self.session.exchange.call_count, 2)
+        prompt.assert_not_called()
 
     def test_indeterminate_exit_is_not_success_or_automatic_retry(self):
         self.session.exchange.side_effect = IndeterminateDelivery("No receipt")
@@ -79,18 +85,22 @@ class WorkflowCLITests(unittest.TestCase):
         self.session.bind.assert_called_once_with(api.return_value.inspect.return_value, library_setup=True)
         self.assertIn("not yet established", self.output.getvalue())
 
-    def test_noninteractive_library_cli_cannot_request_or_supply_approval(self):
+    def test_noninteractive_library_cli_dispatches_without_confirmation(self):
         with (
             tempfile.TemporaryDirectory() as directory,
             patch("orcad_placement_agent.cli.AgentActions") as actions,
             patch("orcad_placement_agent.cli.sys.stdin.isatty", return_value=False),
             patch("builtins.input") as prompt,
         ):
+            actions.return_value.dispatch.side_effect = [
+                {"status": "prepared", "summary": "Exact library plan", "visual": {"image_path": "fixture.png"},
+                 "warning": "No placement or Save."}, {"status": "libraries_loaded"},
+            ]
             code = self.run_cli(["libraries", "load", "--session", directory, "--proposal", "a" * 64])
-        self.assertEqual(code, 2)
-        actions.return_value.dispatch.assert_not_called()
+        self.assertEqual(code, 0)
+        self.assertEqual(actions.return_value.dispatch.call_args.args[0],
+                         {"action": "load-libraries", "session": Path(directory).name, "proposal": "a" * 64})
         prompt.assert_not_called()
-        self.assertIn("interactive terminal", self.error.getvalue())
 
     def test_library_post_image_failure_is_not_a_success_exit(self):
         with (

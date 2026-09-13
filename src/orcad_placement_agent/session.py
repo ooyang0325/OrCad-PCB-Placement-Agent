@@ -265,21 +265,20 @@ class Session:
             if (self.root / "pending.json").exists():
                 raise SessionError("An operation is unresolved; reconcile before sending another.")
             if request.operation in {"apply", "save", "load_libraries"}:
-                for path in self.root.glob("library-approval-*.json"):
-                    digest = path.name.removeprefix("library-approval-").removesuffix(".json")
+                from .library_load import library_dispatch_record, library_status
+
+                for path in (*self.root.glob("library-dispatch-*.json"), *self.root.glob("library-approval-*.json")):
+                    digest = path.stem.rsplit("-", 1)[-1]
                     if re.fullmatch(r"[0-9a-f]{64}", digest) is None:
-                        raise SessionError("Malformed library approval state blocks writes.")
-                    approval = self._read_json(path.name)
-                    if (set(approval) != {"proposal", "request_id", "confirmation"}
-                            or approval.get("proposal") != digest or approval.get("confirmation") != f"LOAD {digest}"):
-                        raise SessionError("Invalid library approval state blocks writes.")
-                    if request.operation == "load_libraries" and approval.get("request_id") == request.request_id:
+                        raise SessionError("Malformed library dispatch state blocks writes.")
+                    record = library_dispatch_record(self, digest)
+                    if record is None:
+                        raise SessionError("Missing library dispatch state blocks writes.")
+                    if request.operation == "load_libraries" and record["request_id"] == request.request_id:
                         continue
                     verified_path = self.root / f"library-verified-{digest}.json"
                     if not verified_path.is_file():
                         raise SessionError("A library load lost asset-lock continuity; inspect its status and stage a fresh copy before writes.")
-                    from .library_load import library_status
-
                     if library_status(self, digest)["status"] not in {"libraries_loaded", "library_partial", "rejected"}:
                         raise SessionError("Invalid library completion state blocks writes.")
             write_new(self.root / f"{request.request_id}.request.csv", payload)

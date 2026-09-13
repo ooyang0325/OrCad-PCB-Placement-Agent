@@ -30,6 +30,45 @@ The coordinator can retrieve bundled rules directly, or use this packet. A
 reference packet alone is not a schematic, a component inventory, or a native
 board snapshot.
 
+## Continuous mission driver
+
+In 0.10.0, start **PCB placement orchestrator** with one complete mission request,
+the exact attached session, and explicit requirements. The coordinator continues
+supported worker handoffs itself; the user need not switch roles, copy proposal
+IDs between agents, or say "continue" after every successful step.
+
+`pcb_placement_intake(session)` is read-only. It does not start Cadence, attach
+windows, load libraries, prepare placements or save:
+
+| Result | Coordinator action |
+|---|---|
+| `setup_required` / `library_preparation` | Inspect the returned setup PNG, delegate preparation, independent review and executor LOAD handoff |
+| `intake_ready` / `placement_planning` | Inspect the PNG and native inventory, reconcile assembly/DNP and explicit grid/clearance, then plan |
+| `blocked` / `reconciliation_required` | Reconcile the exact pending request using its appropriate status tool; do not replay |
+| `blocked` / `attachment_required` | Report the operator's staging/attachment prerequisite; never pick an unrelated window |
+| Other `blocked` results | Report the native message and phase; do not repeat LOAD or alter unsupported geometry |
+
+Only a definite missing-package rejection routes to a setup inspection. A
+timeout, source change, absent PNG, or padstack rejection does not trigger a
+different write path. No additional attach is needed on an already-bound session.
+After a confirmed `libraries_loaded` outcome, return directly to full intake;
+the model may still reject pads, routing or other unsupported features.
+
+Each reviewer/executor calls `pcb_read_proposal(session, proposal, kind)` for
+the exact archived preparation PNG and bound data. `kind` is `placement`,
+`library`, or `save`; the controller validates that proposal and its binding.
+The call issues no native command, creates no approval, and does not make archived
+evidence fresh. Workers must actually view the image and separately inspect current
+native state. Host image limits or unavailable independent delegation must be
+reported; repeated image calls or coordinator self-review do not resolve them.
+
+Continue preparation, independent review, execution and fresh placement-status
+readback until all expected parts are actually observed at their target poses.
+Real external blockers and explicit prepare-only scope are stop conditions,
+not routine "continue" prompts. LOAD/SAVE need no per-operation approval.
+This is bounded automation, not a self-modifying controller: unsupported native
+features require diagnosed, tested implementation changes and native acceptance.
+
 ## Current capability boundary
 
 `pcb_sessions` now returns a `capabilities` declaration alongside the recorded
@@ -41,10 +80,10 @@ operations. This is software scope, not proof of a live license or open board.
 | Inspect the supported board and return PNG/native evidence | Supported after staging/attachment |
 | Move/rotate an already-placed original-fixture symbol | Implemented for autonomous exact-proposal dispatch, subject to native gates |
 | Import a schematic/netlist or resolve arbitrary libraries | Not implemented |
-| Load exact missing package definitions from verified staged files | Separate all-unplaced managed-board-v1 setup binding and human LOAD approval; non-atomic, in memory only; native acceptance pending |
+| Load exact missing package definitions from verified staged files | Separate all-unplaced managed-board-v1 setup binding and autonomous exact-proposal dispatch; non-atomic, in memory only; native acceptance pending |
 | Initially place an unplaced logical component | Implemented for explicit managed-board-v1 with embedded simple SMT footprints; native acceptance pending |
 | Plan complete target sets and reconcile fresh placement coverage | Implemented, with pin-based routing proxies and explicit constraints |
-| Save a new revision through an agent | Separate exact human SAVE approval; no implicit reopen |
+| Save a new revision through an agent | Separate autonomous exact-proposal SAVE; no implicit reopen |
 | Write arbitrary production boards | Not supported |
 | Route traces or prove routing feasibility | Not implemented |
 

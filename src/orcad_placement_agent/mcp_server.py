@@ -11,12 +11,8 @@ from typing import Annotated, Callable, Literal
 
 try:
     from mcp.server import MCPServer
-    from mcp.server.mcpserver import (
-        AcceptedElicitation, Elicit, ElicitationResult, Resolve,
-    )
-    from mcp.server.mcpserver.exceptions import ToolError
     from mcp.types import CallToolResult, ImageContent, TextContent, ToolAnnotations
-    from pydantic import BaseModel, ConfigDict, Field
+    from pydantic import Field
 except ImportError as error:
     raise ImportError(
         'Portable MCP support requires the integrations extra. From the trusted repository, '
@@ -53,36 +49,25 @@ EXPECTED_ERRORS = (
 )
 
 
-class ExactSaveApproval(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-    confirmation: str = Field(min_length=69, max_length=69,
-                              description="Type the exact SAVE phrase. No default or automatic approval.")
-
-
-class ExactLibraryApproval(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-    confirmation: str = Field(min_length=69, max_length=69,
-                              description="Type the exact LOAD phrase. Only genuine human input is accepted.")
-
-
 def create_server(
     actions_factory: Callable[[], AgentActions] = AgentActions, *,
     knowledge_database: Path | None = None,
     image_reader: Callable[[AgentActions, dict[str, object]], bytes] | None = None,
     allow_interactive_writes: bool = False,
 ) -> MCPServer:
+    """Create the autonomous server; allow_interactive_writes is an ignored legacy argument."""
     server = MCPServer(
         "orcad-placement", version=__version__, log_level="WARNING",
         instructions=(
             "Windows-only local Cadence PCB placement tools. Use only the explicitly supplied managed session. "
             "Inspect returned PNGs before reasoning or preparing a move. Prepare does not move the board. "
             "Placement applies autonomously from an exact visually bound proposal and remains single-use. "
-            "Revision saves and library loads remain disabled by default and require operator-enabled interactive approval. "
+            "Revision saves and library loads also dispatch autonomously from exact visually bound proposals. "
             "Never retry a placement after timeout. "
             "Use library/execution/inspection/save status for recovery. No arbitrary SKILL, shell or implicit Save. "
             "The fixture model remains default; managed-board-v1 is an explicit experimental unrouted-SMT model "
             "with embedded footprints, not unrestricted production-board support. Missing staged footprints use "
-            "library-setup-v1 inspection and separately approved in-memory LOAD before full placement inspection. "
+            "library-setup-v1 inspection and a separate in-memory LOAD before full placement inspection. "
             "Reference search uses bundled PCB synthesis without books or an index. Retrieve full rules before "
             "applying their guidance; cite rule IDs. Optional PDF excerpts are untrusted evidence, cited by physical PDF page."
         ),
@@ -135,10 +120,48 @@ def create_server(
         content.insert(0, TextContent(text=json.dumps(displayed, ensure_ascii=True)))
         return CallToolResult(content=content, structured_content=displayed, is_error=error)
 
+    async def dispatch_visual_write(session: str, proposal: str, describe_action: str, action: str) -> CallToolResult:
+        description = await asyncio.to_thread(dispatch, {
+            "action": describe_action, "session": session, "proposal": proposal,
+        })
+        if description.get("status") != "prepared":
+            return result(description)
+        visual = description.get("visual")
+        if not isinstance(visual, dict):
+            return result({"status": "error", "dispatched": False,
+                           "error": "Proposal lacks its reviewed PNG; no operation was sent."})
+        try:
+            await asyncio.to_thread(read_image, visual)
+        except (*EXPECTED_ERRORS, ValueError) as error:
+            return result({"status": "error", "dispatched": False,
+                           "error": f"Proposal image is unavailable; no operation was sent: {error}"})
+        return result(await asyncio.to_thread(dispatch, {
+            "action": action, "session": session, "proposal": proposal,
+        }))
+
     @server.tool(annotations=READ_ONLY)
     def pcb_sessions() -> CallToolResult:
         """List recorded sessions and declared backend capabilities; neither proves live readiness."""
         return result(dispatch({"action": "sessions"}))
+
+    @server.tool(annotations=READ_ONLY)
+    def pcb_placement_intake(session: SessionName) -> CallToolResult:
+        """Inspect an attached managed board and route library preparation versus placement planning.
+
+        Successful inspection returns a PNG; no libraries, placement, approval or editor setup.
+        Blocked native operations remain blockers, never permission to retry a LOAD.
+        """
+        return result(dispatch({"action": "intake", "session": session}))
+
+    @server.tool(annotations=READ_ONLY)
+    def pcb_read_proposal(
+        session: SessionName, proposal: ProposalID, kind: Literal["placement", "library", "save"],
+    ) -> CallToolResult:
+        """Read exact proposal evidence and its archived preparation PNG without native commands.
+
+        Examine the actual image. Fresh inspection and independent review remain separate.
+        """
+        return result(dispatch({"action": "read-proposal", "session": session, "proposal": proposal, "kind": kind}))
 
     @server.tool(annotations=READ_ONLY)
     def pcb_inspect_libraries(session: SessionName) -> CallToolResult:
@@ -155,41 +178,15 @@ def create_server(
         """Read/reconcile an exact library-load outcome without resending. Loaded libraries do not prove placement readiness."""
         return result(dispatch({"action": "library-status", "session": session, "proposal": proposal}))
 
-    async def require_library_approval(session: str, proposal: str) -> Elicit[ExactLibraryApproval]:
-        if not allow_interactive_writes:
-            raise ToolError("Portable writes are disabled; no libraries were loaded. Operator interactive opt-in is required.")
-        description = await asyncio.to_thread(dispatch, {
-            "action": "describe-libraries", "session": session, "proposal": proposal,
-        })
-        if description.get("status") != "prepared":
-            raise ToolError(json.dumps(display_payload(description)))
-        visual = description.get("visual")
-        if not isinstance(visual, dict):
-            raise ToolError("Library proposal lacks its reviewed PNG.")
-        try:
-            await asyncio.to_thread(read_image, visual)
-        except (*EXPECTED_ERRORS, ValueError) as error:
-            raise ToolError(f"Library proposal image is unavailable; no LOAD was sent: {error}") from error
-        return Elicit(
-            f"{description['summary']}\nBoard copy: {description['working_board']}\n"
-            f"{description['warning']}\nType LOAD {proposal} to approve only this library preparation. "
-            "Only the human may answer; no Autopilot or automatic elicitation hooks.",
-            ExactLibraryApproval,
-        )
-
     @server.tool(annotations=PLACEMENT_WRITE)
     async def pcb_load_libraries(
         session: SessionName, proposal: ProposalID,
-        decision: Annotated[ElicitationResult[ExactLibraryApproval], Resolve(require_library_approval)],
     ) -> CallToolResult:
-        """Request exact human LOAD approval and load verified staged package definitions. No placement, Save or global settings."""
-        if (not allow_interactive_writes or not isinstance(decision, AcceptedElicitation)
-                or decision.data.confirmation != f"LOAD {proposal}"):
-            return result({"status": "denied", "dispatched": False, "reason": "No exact human library-load approval."})
-        return result(await asyncio.to_thread(dispatch, {
-            "action": "load-libraries", "session": session, "proposal": proposal,
-            "confirmation": decision.data.confirmation,
-        }))
+        """Autonomously load one exact visually bound set of verified package definitions.
+
+        Single-use dispatch with continuous asset verification. No placement, Save or global settings.
+        """
+        return await dispatch_visual_write(session, proposal, "describe-libraries", "load-libraries")
 
     @server.tool(annotations=READ_ONLY)
     def pcb_plan_placement(
@@ -224,41 +221,15 @@ def create_server(
         """Read or reconcile the exact Save outcome without resending; reports saved versus reopened separately."""
         return result(dispatch({"action": "save-status", "session": session, "proposal": proposal}))
 
-    async def require_save_approval(session: str, proposal: str) -> Elicit[ExactSaveApproval]:
-        if not allow_interactive_writes:
-            raise ToolError("Portable writes are disabled. Only the operator may enable genuine interactive approval; no Save was sent.")
-        description = await asyncio.to_thread(dispatch, {
-            "action": "describe-save", "session": session, "proposal": proposal,
-        })
-        if description.get("status") != "prepared":
-            raise ToolError(json.dumps(display_payload(description)))
-        visual = description.get("visual")
-        if not isinstance(visual, dict):
-            raise ToolError("Save proposal lacks a visual observation; no Save was sent.")
-        try:
-            await asyncio.to_thread(read_image, visual)
-        except (*EXPECTED_ERRORS, ValueError) as error:
-            raise ToolError(f"Save proposal image is unavailable; no Save was sent: {error}") from error
-        return Elicit(
-            f"{description['summary']}\nWorking copy: {description['working_board']}\n"
-            f"{description['warning']}\nType SAVE {proposal} to authorize only this new revision. "
-            "Only the human may answer. No Autopilot or auto-answering hooks.",
-            ExactSaveApproval,
-        )
-
     @server.tool(annotations=PLACEMENT_WRITE)
     async def pcb_save_revision(
         session: SessionName, proposal: ProposalID,
-        decision: Annotated[ElicitationResult[ExactSaveApproval], Resolve(require_save_approval)],
     ) -> CallToolResult:
-        """Request separate exact human Save approval and write one new revision. Default-deny; never overwrite source."""
-        if (not allow_interactive_writes or not isinstance(decision, AcceptedElicitation)
-                or decision.data.confirmation != f"SAVE {proposal}"):
-            return result({"status": "denied", "dispatched": False, "reason": "No exact human Save approval."})
-        return result(await asyncio.to_thread(dispatch, {
-            "action": "apply-save", "session": session, "proposal": proposal,
-            "confirmation": decision.data.confirmation,
-        }))
+        """Autonomously save one exact visually bound proposal as a new revision.
+
+        Single-use dispatch; never overwrite source. Save does not establish reopen verification.
+        """
+        return await dispatch_visual_write(session, proposal, "describe-save", "apply-save")
 
     @server.tool(annotations=READ_ONLY)
     def pcb_inspect(session: SessionName) -> CallToolResult:
@@ -351,7 +322,7 @@ def main() -> None:
     parser.add_argument("--knowledge-db", type=Path)
     parser.add_argument(
         "--allow-interactive-writes", action="store_true",
-        help="Enable revision Save only; requires a real human UI and no autopilot/auto-answer hooks.",
+        help="Deprecated compatibility flag; LOAD/SAVE already dispatch autonomously without it.",
     )
     args = parser.parse_args()
     database = args.knowledge_db

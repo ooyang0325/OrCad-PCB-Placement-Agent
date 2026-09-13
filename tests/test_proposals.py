@@ -2,11 +2,14 @@ from pathlib import Path
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from orcad_placement_agent.protocol import ProtocolError, Receipt
 from orcad_placement_agent.proposals import (
-    apply_proposal, load_proposal, propose, proposal_summary,
+    apply_proposal, load_dispatch_record, load_proposal, placement_dispatch_history,
+    propose, proposal_summary, read_placement_receipt,
 )
+from orcad_placement_agent.session import SessionError, write_json
 
 
 class FakeSession:
@@ -88,6 +91,92 @@ class ProposalTests(unittest.TestCase):
         self.assertEqual(len(self.session.requests), 1)
         request = self.session.requests[0]
         self.assertEqual((request.snapshot_id, request.refdes, request.x), ("2" * 32, "R1", "12"))
+
+    def test_legacy_consumed_proposals_cannot_dispatch_again_after_upgrade(self):
+        digest, _ = propose(self.session, self.snapshot(), "R1", "12", "10", "0")
+        write_json(self.session.root / f"approval-{digest}.json", {
+            "proposal_sha256": digest, "request_id": "3" * 32, "confirmation": f"APPLY {digest}",
+        })
+        self.assertEqual(load_dispatch_record(self.session, digest)["request_id"], "3" * 32)
+        with self.assertRaisesRegex(FileExistsError, "legacy"):
+            apply_proposal(self.session, digest)
+        self.assertFalse((self.session.root / f"dispatch-{digest}.json").exists())
+        self.assertEqual(self.session.requests, [])
+
+    def test_unknown_earlier_dispatch_cannot_be_bypassed_with_another_proposal(self):
+        first, _ = propose(self.session, self.snapshot(), "R1", "12", "10", "0")
+        apply_proposal(self.session, first)
+        second, _ = propose(self.session, self.snapshot(), "R1", "14", "10", "0")
+        with self.assertRaisesRegex(SessionError, "earlier placement dispatch is unresolved"):
+            apply_proposal(self.session, second)
+        self.assertFalse((self.session.root / f"dispatch-{second}.json").exists())
+        self.assertEqual(len(self.session.requests), 1)
+        request_id = self.session.requests[0].request_id
+        write_json(self.session.root / f"{request_id}.receipt.json",
+                   Receipt(self.session.nonce, request_id, "applied", "Late result", ()).to_dict())
+        apply_proposal(self.session, second)
+        self.assertEqual(len(self.session.requests), 2)
+
+    def test_ambiguous_or_mismatched_dispatch_records_do_not_choose_a_winner(self):
+        digest = "a" * 64
+        path = self.session.root / f"dispatch-{digest}.json"
+        path.write_text(json.dumps({"proposal_sha256": "b" * 64, "request_id": "3" * 32}), encoding="utf-8")
+        with self.assertRaises(ProtocolError):
+            load_dispatch_record(self.session, digest)
+        path.write_text(json.dumps({"proposal_sha256": digest, "request_id": "3" * 32}), encoding="utf-8")
+        write_json(self.session.root / f"approval-{digest}.json", {
+            "proposal_sha256": digest, "request_id": "4" * 32, "confirmation": f"APPLY {digest}",
+        })
+        with self.assertRaisesRegex(SessionError, "Both legacy and current"):
+            load_dispatch_record(self.session, digest)
+
+    def test_history_reports_missing_receipts_and_rejects_wrong_operation_receipts(self):
+        digest, _ = propose(self.session, self.snapshot(), "R1", "12", "10", "0")
+        apply_proposal(self.session, digest)
+        record = load_dispatch_record(self.session, digest)
+        result = placement_dispatch_history(self.session)
+        self.assertEqual(result[0]["status"], "indeterminate")
+        self.assertEqual(result[0]["request"], record["request_id"])
+        self.assertEqual(len(self.session.requests), 1)
+        self.assertIsNone(read_placement_receipt(self.session, record["request_id"]))
+        write_json(self.session.root / f"{record['request_id']}.receipt.json",
+                   Receipt(self.session.nonce, record["request_id"], "snapshot", "Not a move", ()).to_dict())
+        with self.assertRaisesRegex(ProtocolError, "placement dispatch"):
+            placement_dispatch_history(self.session)
+
+    def test_history_rejects_duplicate_request_ids_and_enforces_scan_bound(self):
+        for digest in ("a" * 64, "b" * 64):
+            write_json(self.session.root / f"dispatch-{digest}.json", {
+                "proposal_sha256": digest, "request_id": "3" * 32,
+            })
+        with self.assertRaisesRegex(ProtocolError, "share a native request"):
+            placement_dispatch_history(self.session)
+        with patch("orcad_placement_agent.proposals.MAX_DISPATCH_RECORDS", 1):
+            with self.assertRaisesRegex(SessionError, "bounded recovery"):
+                placement_dispatch_history(self.session)
+
+    def test_receipt_identity_and_mission_binding_are_validated_before_recovery(self):
+        digest, request_id = "a" * 64, "3" * 32
+        write_json(self.session.root / f"dispatch-{digest}.json", {
+            "proposal_sha256": digest, "request_id": request_id,
+        })
+        path = self.session.root / f"{request_id}.receipt.json"
+        for receipt in (
+            Receipt("9" * 32, request_id, "applied", "Other session", ()),
+            Receipt(self.session.nonce, "4" * 32, "applied", "Other request", ()),
+            Receipt(self.session.nonce, request_id, "saved", "Different operation", ()),
+        ):
+            path.write_text(json.dumps(receipt.to_dict()), encoding="utf-8")
+            with self.assertRaises(ProtocolError):
+                placement_dispatch_history(self.session)
+        path.write_text(json.dumps(Receipt(
+            self.session.nonce, request_id, "applied", "Exact result", (),
+        ).to_dict()), encoding="utf-8")
+        write_json(self.session.root / f"mission-proposal-{digest}.json", {
+            "proposal": "b" * 64, "mission": "5" * 32,
+        })
+        with self.assertRaisesRegex(ProtocolError, "binding was changed"):
+            placement_dispatch_history(self.session)
 
 
 if __name__ == "__main__":

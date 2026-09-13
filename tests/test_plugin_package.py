@@ -82,7 +82,11 @@ class PluginPackageTests(unittest.TestCase):
         execution = (self.root / "skills" / "pcb-placement-execute" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("disable-model-invocation: true", execution)
         self.assertIn("placement writes are enabled by default", execution)
-        self.assertIn("Revision saves remain disabled", execution)
+        for requirement in ("without per-operation human approval", "raw SKILL",
+                            "fixtures\\access-proof\\README.md", "recoverable baseline",
+                            "MCP LOAD/SAVE dispatches autonomously"):
+            self.assertIn(requirement, " ".join(execution.split()))
+        self.assertNotIn("the latter requires its own exact human SAVE approval", execution)
         self.assertIn("allow_implicit_invocation: false",
                       (self.root / "skills" / "pcb-placement-execute" / "agents" / "openai.yaml").read_text())
         coordinator = self.root / "skills" / "pcb-placement-orchestrate"

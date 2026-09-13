@@ -12,13 +12,16 @@ from .diagnostics import ConfigurationError, default_runtime_directory
 from .design_copy import DesignCopyError
 from .capabilities import backend_capabilities
 from . import expertise
-from .protocol import MAX_BYTES, MAX_METADATA_BYTES, ProtocolError, Receipt, identifier, number
-from .proposals import apply_proposal, load_proposal, propose, proposal_summary
+from .protocol import MAX_BYTES, MAX_METADATA_BYTES, ProtocolError, Receipt, Request, identifier, number
+from .proposals import (
+    apply_proposal, load_dispatch_record, load_proposal, placement_dispatch_history,
+    propose, proposal_summary, read_placement_receipt,
+)
 from .session import Session, SessionError, write_json
 from .transport import IndeterminateDelivery, TransportError
-from .save_proposals import prepare_save, load_save, approve_save, save_status
+from .save_proposals import prepare_save, load_save, apply_save, save_status
 from .library_load import (
-    approve_libraries, library_status, load_library_proposal, pinned_library_bundle,
+    apply_libraries, library_status, load_library_proposal, pinned_library_bundle,
     prepare_libraries, setup_inventory,
 )
 
@@ -148,6 +151,58 @@ class AgentActions:
                        + receipt.attachment_warning,
         }
 
+    def intake(self, session: Session) -> dict[str, object]:
+        from .board import from_receipt
+
+        result = {"session": session.root.name, "placement_ready": False}
+        if session.model != "managed-board-v1":
+            return {**result, "status": "blocked", "phase": "unsupported_model",
+                    "error": "An all-component mission requires explicit managed-board-v1 staging."}
+        if not (session.root / "editor.json").is_file():
+            return {**result, "status": "blocked", "phase": "attachment_required",
+                    "error": "The selected session is not attached. No editor was selected or opened."}
+        if (session.root / "pending.json").is_file():
+            pending = session._read_json("pending.json")
+            return {**result, "status": "blocked", "phase": "reconciliation_required",
+                    "request": identifier(pending.get("request_id")), "operation": pending.get("operation"),
+                    "error": "Reconcile the exact pending operation before intake; nothing was resent."}
+        unresolved = [item for item in placement_dispatch_history(session) if item["status"] == "indeterminate"]
+        if unresolved:
+            return {**result, "status": "blocked", "phase": "execution_reconciliation",
+                    "execution": {"unresolved": unresolved}, "next_tool": "pcb_execution_status",
+                    "error": "A consumed placement has no established outcome. Reconcile it before further preparation."}
+        receipt = session.exchange(Request(session.nonce, uuid.uuid4().hex, "snapshot"))
+        if receipt.status != "snapshot":
+            if (receipt.status == "rejected"
+                    and receipt.message.startswith("Missing embedded package definitions (")
+                    and session.design_copy is not None):
+                observation = self.observation(session, library_setup=True)
+                inventory = setup_inventory(self.snapshot(session, observation))
+                if inventory["missing_packages"]:
+                    return {**result, "status": "setup_required", "phase": "library_preparation",
+                            "inventory": inventory, "visual": observation,
+                            "next_role": "PCB placement planner", "next_tool": "pcb_prepare_library_load",
+                            "warning": "Preparation and independent review may continue without another prompt. "
+                                       "Prepare and review an exact proposal before autonomous LOAD; no libraries were loaded."}
+                return {**result, "status": "blocked", "phase": "native_state_changed",
+                        "visual": observation, "inventory": inventory,
+                        "error": "Missing packages changed during intake. Full placement readiness is not established."}
+            return {**result, "status": "blocked", "phase": "native_model_rejected",
+                    "receipt": receipt.to_dict(), "error": receipt.message,
+                    "warning": "No usable placement PNG was captured. Do not repeat LOAD or alter design data to evade rejection."}
+        observation = self.observation(session)
+        current = self.snapshot(session, observation)
+        if current.scene != receipt.scene or current.one("board") != receipt.one("board"):
+            return {**result, "status": "blocked", "phase": "native_state_changed",
+                    "visual": observation, "error": "The native scene changed during intake; review fresh state."}
+        board = from_receipt(current)
+        return {**result, "status": "intake_ready", "phase": "placement_planning",
+                "placement_ready": True, "visual": observation, "board": board,
+                "next_role": "PCB placement planner", "next_tool": "pcb_plan_placement",
+                "required_inputs": ["expected_refdes", "grid_mm", "clearance_mm"],
+                "warning": "Readiness is not a completed mission. Reconcile assembly/DNP intent and explicit requirements. "
+                           "Routing and persistence are unverified." + current.attachment_warning}
+
     def dispatch(self, request: dict[str, object]) -> dict[str, object]:
         if not isinstance(request, dict) or not isinstance(request.get("action"), str):
             raise AgentActionError("A typed action object is required.")
@@ -193,6 +248,8 @@ class AgentActions:
                         sessions.append({"session": path.name, "error": str(error)})
             return {"status": "listed", "capabilities": backend_capabilities(), "sessions": sessions}
         allowed = {
+            "intake": {"action", "session"},
+            "read-proposal": {"action", "session", "proposal", "kind"},
             "inspect": {"action", "session"},
             "prepare": {"action", "session", "refdes", "x", "y", "angle"},
             "describe": {"action", "session", "proposal"},
@@ -204,12 +261,12 @@ class AgentActions:
             "mission-next": {"action", "session", "mission"},
             "prepare-save": {"action", "session"},
             "describe-save": {"action", "session", "proposal"},
-            "apply-save": {"action", "session", "proposal", "confirmation"},
+            "apply-save": {"action", "session", "proposal"},
             "save-status": {"action", "session", "proposal"},
             "inspect-libraries": {"action", "session"},
             "prepare-libraries": {"action", "session"},
             "describe-libraries": {"action", "session", "proposal"},
-            "load-libraries": {"action", "session", "proposal", "confirmation"},
+            "load-libraries": {"action", "session", "proposal"},
             "library-status": {"action", "session", "proposal"},
         }
         if action not in allowed or set(request) != allowed[action]:
@@ -217,6 +274,16 @@ class AgentActions:
         if not all(isinstance(value, str) for value in request.values()):
             raise AgentActionError("Agent action values must be strings.")
         session = self.session(request["session"])
+        if action == "intake":
+            return self.intake(session)
+        if action == "read-proposal":
+            readers = {"placement": self.describe, "library": self.describe_libraries, "save": self.describe_save}
+            if request["kind"] not in readers:
+                raise AgentActionError("Proposal kind must be placement, library, or save.")
+            return {"status": "proposal_evidence", **readers[request["kind"]](session, request["proposal"]),
+                    "kind": request["kind"], "freshness": "archived",
+                    "message": "Exact preparation PNG and bound native evidence only; no native command or approval. "
+                               "Inspect fresh state separately. Missing pixels or host image limits are review blockers."}
         if action == "library-status":
             return library_status(session, request["proposal"])
         if action in {"inspect-libraries", "prepare-libraries"}:
@@ -236,7 +303,7 @@ class AgentActions:
             description = self.describe_libraries(session, request["proposal"])
             if action == "describe-libraries":
                 return {"status": "prepared", **description}
-            receipt = approve_libraries(session, request["proposal"], request["confirmation"])
+            receipt = apply_libraries(session, request["proposal"])
             result = {**library_status(session, request["proposal"]), "proposal": request["proposal"]}
             from .visuals import VisualError
 
@@ -263,7 +330,7 @@ class AgentActions:
             description = self.describe_save(session, request["proposal"])
             if action == "describe-save":
                 return {"status": "prepared", **description}
-            receipt = approve_save(session, request["proposal"], request["confirmation"])
+            receipt = apply_save(session, request["proposal"])
             result = {**save_status(session, request["proposal"]), "proposal": request["proposal"]}
             from .visuals import VisualError
 
@@ -281,6 +348,28 @@ class AgentActions:
             from .board import from_receipt
             from .missions import plan_mission, mission_status, next_candidate
 
+            mission_id = None
+            stored = None
+            if action != "mission-plan":
+                mission_id = identifier(request["mission"])
+                stored = session._read_json(f"mission-{mission_id}.json")
+                if (set(stored) != {"schema_version", "nonce", "mission", "plan"}
+                        or stored["schema_version"] != 1 or stored["nonce"] != session.nonce
+                        or stored["mission"] != mission_id):
+                    raise AgentActionError("Mission metadata does not match this session.")
+            history = placement_dispatch_history(session)
+            unresolved = [item for item in history if item["status"] == "indeterminate"]
+            failed = [item for item in history if mission_id is not None and item["mission"] == mission_id
+                      and item["status"] in {"rejected", "rolled_back"}]
+            if unresolved or failed:
+                return {
+                    "status": "blocked", "mission": mission_id,
+                    "phase": "execution_reconciliation" if unresolved else "execution_rejected",
+                    "execution": {"unresolved": unresolved, "failed": failed},
+                    "next_tool": "pcb_execution_status" if unresolved else "pcb_read_proposal",
+                    "warning": "No fresh placement coverage was measured and no replacement proposal was prepared. "
+                               "Reconcile unknown outcomes; send terminal failures to the planner/reviewer before replanning.",
+                }
             observation = self.observation(session)
             receipt = self.snapshot(session, observation)
             board = from_receipt(receipt)
@@ -302,19 +391,16 @@ class AgentActions:
                         "mission": mission_id, "plan": plan,
                         "visual": observation,
                         "warning": "A plan is not placement dispatch. Review the complete targets and constraints."}
-            mission_id = identifier(request["mission"])
-            stored = session._read_json(f"mission-{mission_id}.json")
-            if (set(stored) != {"schema_version", "nonce", "mission", "plan"}
-                    or stored["schema_version"] != 1 or stored["nonce"] != session.nonce
-                    or stored["mission"] != mission_id):
-                raise AgentActionError("Mission metadata does not match this session.")
             try:
                 progress = mission_status(board, stored["plan"])
                 candidate = next_candidate(board, stored["plan"]) if action == "mission-next" else None
             except ValueError as error:
                 raise AgentActionError(str(error)) from error
             result = {"status": "blocked" if progress["status"] == "blocked" else "mission_status", "mission": mission_id,
-                      "progress": progress, "visual": observation}
+                      "progress": progress, "visual": observation,
+                      "execution": {"unresolved": [], "failed": [],
+                                    "applied_count": sum(item["mission"] == mission_id and item["status"] == "applied"
+                                                         for item in history)}}
             if candidate is None:
                 return result
             if candidate.get("status") == "blocked":
@@ -380,17 +466,12 @@ class AgentActions:
             return {"status": "prepared", **self.describe(session, digest)}
         if action == "execution-status":
             load_proposal(session, request["proposal"])
-            dispatch_path = session.root / f"dispatch-{request['proposal']}.json"
-            legacy_path = session.root / f"approval-{request['proposal']}.json"
-            record_path = dispatch_path if dispatch_path.is_file() else legacy_path
-            if not record_path.is_file():
+            dispatch_record = load_dispatch_record(session, request["proposal"])
+            if dispatch_record is None:
                 return {"status": "not_dispatched", "message": "This proposal has not been dispatched."}
-            dispatch_record = session._read_json(record_path.name)
-            request_id = identifier(dispatch_record.get("request_id"))
-            receipt_path = session.root / f"{request_id}.receipt.json"
-            if receipt_path.is_file():
-                receipt = Receipt.from_dict(session._read_json(receipt_path.name))
-            else:
+            request_id = dispatch_record["request_id"]
+            receipt = read_placement_receipt(session, request_id)
+            if receipt is None:
                 if not (session.root / "pending.json").is_file():
                     return {
                         "status": "indeterminate",
@@ -400,7 +481,8 @@ class AgentActions:
                 if pending.get("request_id") != request_id:
                     raise AgentActionError("A different operation is unresolved; nothing was replayed.")
                 receipt = session.reconcile(expected_request_id=request_id, expected_operation="apply")
-            if receipt.nonce != session.nonce or receipt.request_id != request_id:
+            if (receipt.nonce != session.nonce or receipt.request_id != request_id
+                    or receipt.status not in {"applied", "rejected", "rolled_back", "indeterminate"}):
                 raise AgentActionError("Execution receipt does not match the dispatch record.")
             result = {
                 "status": receipt.status, "receipt": receipt.to_dict(),
@@ -463,7 +545,7 @@ class AgentActions:
             "session": session.root.name, "proposal_sha256": digest, "visual": observation,
             "working_board": str(session.working), "destination": str(destination),
             "summary": f"Save this exact reviewed board state to a new revision: {destination}",
-            "warning": "Separate SAVE approval required. No source overwrite; no automatic reopen or manufacturing certification."
+            "warning": "Single-use autonomous SAVE. No source overwrite; no automatic reopen or manufacturing certification."
                        + receipt.attachment_warning,
         }
 
@@ -477,7 +559,7 @@ class AgentActions:
         receipt = self.snapshot(session, observation)
         setup_inventory(receipt)
         if receipt.scene_digest != proposal["scene_digest"] or receipt.one("snapshot")[1] != proposal["snapshot_id"]:
-            raise AgentActionError("Library visual evidence does not match the approved inventory.")
+            raise AgentActionError("Library visual evidence does not match the proposed inventory.")
         image = session.root / f"visual-{observation_id}.png"
         if Path(observation["image_path"]).resolve() != image or not image.is_file():
             raise AgentActionError("Library setup image is unavailable.")
@@ -498,7 +580,7 @@ class AgentActions:
                 "LOAD changes in-memory library definitions only, not component placement or the saved board. "
                 "Existing embedded pad/flash definitions are preserved, not refreshed from disk. "
                 "The current editor's search paths are restored after the operation. Partial loading is possible; "
-                "use the exact outcome/status, never replay an approval. Full placement compatibility is checked separately."
+                "use the exact outcome/status, never replay a dispatch. Full placement compatibility is checked separately."
             ) + receipt.attachment_warning,
         }
 

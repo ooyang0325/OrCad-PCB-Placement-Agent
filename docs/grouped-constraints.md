@@ -85,8 +85,8 @@ preparation before unrelated unused-padstack restrictions. It does not load
 libraries implicitly or substitute approximate footprints.
 
 Group support therefore does not by itself establish complete placement
-readiness for this file. Operator-controlled library preparation, the other
-documented geometry limits, and exact human placement/Save approvals still
+readiness for this file. Explicit library preparation, the other documented
+geometry limits, and exact placement/Save proposal preconditions still
 apply. All diagnostic reports and board/library binaries remain local-only.
 
 Unused package definitions may be purged when an all-unplaced board is saved.
@@ -94,11 +94,11 @@ Library preparation therefore needs to make the correct definitions available
 in the active staged editor before full placement inspection; saving a
 library-loaded but still-unplaced board is not proof that the definitions will
 survive reopening.
-The [approved library-loading workflow](library-loading.md) can now prepare and
+The [library-loading workflow](library-loading.md) can now prepare and
 load exact missing definitions from the staged project after the operator's
 separate all-unplaced `attach --library-setup` binding. It is not an implicit
 side effect of staging or attachment and does not import logical designs.
-LOAD is non-atomic, separately human-approved and in memory only; native LOAD
+LOAD is non-atomic, autonomously dispatched and in memory only; native LOAD
 acceptance is pending. Full placement geometry checks remain independent.
 
 Full-folder [design staging](design-staging.md) now copies local project

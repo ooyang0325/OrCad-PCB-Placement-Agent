@@ -18,9 +18,9 @@ performed by the installer.
 - If the repository is private, each user needs GitHub access and working Git
   credentials. Never put tokens in plugin manifests or configuration samples.
 
-The plugin enables autonomous placement only for exact visually bound proposals;
+The plugin enables autonomous placement, LOAD and SAVE for exact visually bound proposals;
 inspection, proposal preparation, reference search and recovery remain
-read-only. Revision Save is disabled by default. The original fixture is the
+read-only. No write opt-in flag is required. The original fixture is the
 default native model. Experimental managed-board-v1 is explicitly selected at
 staging. Full placement requires documented unrouted, embedded simple SMT
 geometry; a separate all-unplaced library-setup binding is not placement
@@ -37,11 +37,11 @@ Version 0.8.0 adds [complete design-folder staging](design-staging.md), includin
 supporting project files and local footprint/padstack libraries. The copied
 project is isolated from controller files. Copying is not implicit library loading.
 
-Version 0.9.0 adds [separately approved library setup](library-loading.md) for
+Version 0.9.0 introduced [separate library setup](library-loading.md) for
 known, all-unplaced managed-board-v1 inventory. After staging the project,
 the operator uses `attach --library-setup`. Bounded tools inspect and prepare
 the exact missing package definitions from verified staged PSM/PAD/FSM/SSM
-files; the executor requests genuine human LOAD approval. Loading is non-atomic,
+files; the executor now dispatches LOAD without elicitation. Loading is non-atomic,
 in memory only, and may be partial or uncertain. It does not import logical
 designs, refresh existing definitions, place components, save, establish
 persistence or change global settings. Normal full placement inspection is
@@ -79,7 +79,7 @@ scripts; the installer does not bypass or change that policy.
 **PCB expertise is bundled:** the default install includes 36 original rules
 and needs no books, index, PDF parser, embedding service or extra model.
 Search and full-rule lookup work immediately after MCP registration. Cadence,
-design-specific inputs and native Save-approval requirements remain separate.
+design-specific inputs and native validation requirements remain separate.
 
 Optional local books can be indexed explicitly (this installs PDF dependencies):
 
@@ -222,6 +222,12 @@ project `.github\extensions` as an installed plugin extension.
 
 ## Shared workflows and write authority
 
+Version 0.10.0 adds `pcb_placement_intake` and `pcb_read_proposal`. Upgrade the
+versioned Python environment from the trusted checkout and restart the client
+so worker allowlists and MCP tools refresh together. Do not run the portable
+MCP plugin and project SDK extension for the same mission simultaneously.
+An existing staged native adapter is not upgraded by restarting the client.
+
 The plugin bundles `pcb-placement-orchestrate` above `pcb-placement-plan`,
 `pcb-placement-review`, and `pcb-placement-execute`. Use the client's skill picker/slash interface;
 namespacing varies. All workflows require examining actual returned PNGs.
@@ -232,12 +238,12 @@ managed-board model implement conditional initial placement; see
 [the executable workflow](placement-missions.md) and its acceptance limits.
 If missing packages block placement, coordinate the separate library-setup
 phase through the same bounded planner/reviewer/executor roles. Preparation
-and a favorable review are not LOAD approval, and LOAD is not placement.
+and a favorable review are not a completed LOAD, and LOAD is not placement.
 
 Portable skills guide the client's main agent; they do not remove its other
 tools or act as a sandbox. Configure the host's permissions appropriately.
-The bounded MCP implementation autonomously dispatches only exact visually
-bound placement proposals, while the app-specific agent profiles retain their
+The bounded MCP implementation autonomously dispatches exact visually
+bound placement, library and Save proposals, while app-specific profiles retain their
 explicit tool allowlists.
 
 The MCP tool basenames are stable, but Claude plugin tools are scoped, for
@@ -248,14 +254,12 @@ Placement writes need no elicitation flag: `pcb_apply_placement` dispatches an
 exact reviewed proposal autonomously and once. Fresh native state and all
 bounded-model checks still apply.
 
-**Elicitation support is not proof of human input.** Therefore all shipped
-launch/configuration paths leave library LOAD and revision Save disabled by default.
-Only an operator may add `--allow-interactive-writes` after ensuring genuine
-interactive input and disabling auto-answer behavior. Never enable it through an agent
-tool call or in unattended/autonomous sessions. The app-specific SDK extension separately
-refuses LOAD and SAVE unless its session mode is `interactive`, checked before and after
-prompting. It never changes modes on the user's behalf. Native mutation acceptance remains
-a separate local validation milestone.
+LOAD and SAVE now follow the same autonomous authorization policy. Neither MCP
+nor the app extension requires an interactive mode or human response. The old
+`--allow-interactive-writes` flag is accepted for compatibility and has no effect.
+Update/reinstall the runtime and restart existing MCP servers/extensions to use
+the changed behavior. Host tool permissions are unchanged. Native mutation
+acceptance remains a separate local validation milestone.
 
 ## Package safely and publish deliberately
 

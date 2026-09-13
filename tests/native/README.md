@@ -62,8 +62,26 @@ no undo/redo hook; fresh full-scene comparison is always required. A manual
 change followed by undo back to the identical scene is not an observable event
 history guarantee. Native undo behavior needs the dedicated acceptance tests.
 
+## Pure SMT pad-rule cases
+
+`smt_pad_rules.il` defines `opaManagedSmtPadRulesAcceptance()` for an opt-in
+native check after the current trusted adapter and helper have been loaded in
+the dedicated synthetic-fixture editor. It calls no board, library, placement
+or Save API. Its expected result is **39** checked cases covering:
+
+- Zero-drill `none`/`circle_drill` templates versus real drill/slot dimensions.
+- Supported primitive, oblong and rounded/chamfered pad-style parameters.
+- Invalid corner selections, oversized/negative radii and unsupported shapes.
+- Preservation of fine corner-radius metadata in stable native serialization.
+
+This helper has not yet been run natively for the 0.10.0 checkpoint. Static
+unittest contracts only check its structure and the reader's protected fields.
+Even a successful pure-helper run would not establish actual `pad->figure`
+readback, rotated instance equality, placement/DRC rollback or saved persistence;
+those require native fixture before/after cases using the real pad variants.
+
 M1 does **not** execute apply, rollback, negative placement cases, native Undo,
 or revision Save. Those implementations must remain labelled unverified until
-exact autonomous mutation proposals and separate save approvals are exercised
+exact autonomous mutation and Save proposals are exercised
 and their native receipts, restoration, and persistence behavior are actually
 checked.

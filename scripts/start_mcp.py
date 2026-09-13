@@ -28,7 +28,8 @@ def local_data():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--environment-directory", type=Path)
-    parser.add_argument("--allow-interactive-writes", action="store_true")
+    parser.add_argument("--allow-interactive-writes", action="store_true",
+                        help="Deprecated compatibility flag; LOAD/SAVE need no opt-in.")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     version = json.loads((root / "plugin.json").read_text(encoding="utf-8"))["version"]

@@ -165,7 +165,7 @@ board. The copied files make subsequent [explicit library setup](library-loading
 possible. For all-unplaced managed-board-v1 inventory, `attach --library-setup`
 binds the staged editor without claiming full placement readiness. Preparation
 verifies staged PSM/PAD/FSM/SSM files and creates a bounded cache; only a separate
-exact human LOAD authorizes in-memory definition loading. Full placement
+exact LOAD dispatch performs in-memory definition loading. Full placement
 inspection remains required afterward and can reject unsupported geometry.
 Loading is non-atomic, may be partial/uncertain, and does not refresh existing
 definitions or establish persistence. Native LOAD acceptance is pending.

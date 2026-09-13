@@ -2,7 +2,7 @@
 
 Copying project files makes libraries available on disk; it does not embed
 their definitions in an open Cadence database. Library preparation is now a
-separate, exact-approval workflow before placement.
+separate, exact-proposal workflow before placement, with autonomous dispatch.
 
 Version 0.9.0 implements this bounded setup path. **Native LOAD acceptance is
 pending**; documentation, packaged tools and Python/fake-editor tests do not
@@ -28,24 +28,24 @@ establish native loading, failure recovery or persistence.
    available only for explicitly staged `managed-board-v1`, not the default
    fixture model. Placed or empty designs are blockers, not permission to remove
    parts or invent a logical inventory.
-4. In an **Interactive** client, ask the agent:
+4. Ask the agent:
 
    > Inspect library setup for session `board-XXXX`. Prepare the missing
    > package definitions from its staged project files, show me the exact
-   > package/file list and image, and request my LOAD approval. Do not place
+   > package/file list and image, then load the reviewed proposal. Do not place
    > components or save the board.
 
 The planner calls `pcb_inspect_libraries` and `pcb_prepare_library_load`;
 the reviewer independently checks the exact package/file list and actual PNG.
-Only the executor requests the exact human phrase through `pcb_load_libraries`.
+Only the executor dispatches the exact proposal through `pcb_load_libraries`.
 The coordinator delegates only these bounded roles and never loads directly.
 `pcb_library_load_status` reads or reconciles the outcome without repeating it.
 No model-visible `confirmation` field is accepted by the app/MCP tools.
 
 CLI equivalents are `libraries inspect`, `libraries prepare`, `libraries load`
 and `libraries status`, each with `--session`; load/status also take the exact
-`--proposal`. CLI load requires an interactive terminal and an exact LOAD phrase.
-Never manufacture input through a script, pseudo-terminal or auto-answer hook.
+`--proposal`. CLI load, like MCP/app LOAD, works without an interactive terminal
+or an approval phrase. No auto-answer hook is needed.
 
 ## Optional 3D-content exception, never the default
 
@@ -207,7 +207,7 @@ settings. Missing dependencies are errors, not a reason to search elsewhere.
 Loading may finish completely or partially; it is a **non-atomic** operation,
 not a rollback-capable placement transaction. The outcome reports actual
 loaded/missing definitions and rechecks protected state. An uncertain native
-result is never treated as a rollback or a reason to replay the same approval.
+result is never treated as a rollback or a reason to replay the same dispatch.
 
 Individual no-write/delete file handles pin the verified existing bytes through
 the native outcome. Windows directory handles do **not** freeze the child
@@ -221,18 +221,45 @@ cache-change monitoring also blocks later writes in that session. A late native
 receipt is still reported, but does not erase a detected change or uncertain
 protection interval: inspect status and stage a fresh copy rather than retrying.
 
-Portable writes remain disabled by default; only the operator may enable them
-in a genuinely interactive client without automatic elicitation answers. The
-app tool separately refuses noninteractive/Autopilot operation.
+MCP and app LOAD/SAVE dispatch autonomously by default from exact visually bound
+proposals. The legacy interactive-write flag is accepted but has no effect.
+New `library-dispatch-<id>.json` records preserve single-use behavior; legacy
+approval records remain recognized for recovery and replay prevention. Native
+scope, asset verification and outcome checks are unchanged.
 
 ## After loading
+
+After a confirmed `libraries_loaded`, the coordinator continues to
+`pcb_placement_intake` on the same binding without another "continue" or attach.
+A partial or indeterminate outcome must be reconciled first; it is not LOAD
+success. The setup-to-placement transition never repeats the library load.
 
 Use ordinary `pcb_inspect` and examine its fresh native state and actual PNG
 to validate the **full placement model**. Successful library loading does not
 prove that through-hole pads, text, complex package geometry, routed copper or
 every board feature is supported. Placement still requires its own exact
-proposals and human approval, and Save is separate.
+reviewed proposals and native gates, but dispatch is autonomous; Save is separate.
+
+The 0.10.0 native reader replaces the generic "Duplicate, drilled, derived or
+advanced padstack" rejection with the exact padstack name, failing attribute and
+observed value, for example `Padstack VIA: unsupported isThrough=t`.
+Checks still cover unused embedded padstacks. A `circle_drill` template label
+with zero nominal drill/slot dimensions can now be accepted as hole-free SMT,
+subject to through/span, actual-hole/slot and advanced-feature checks.
+Oblong and bounded rounded/chamfered top SMT pads retain complete native
+boundaries and fine corner metadata. This is not added through-hole or slot
+placement support, and extended-variant native acceptance remains pending.
+Existing editor sessions keep their staged adapter version; changing Python or
+reloading the app extension alone does not update native diagnostics. Do not
+reload or restage a loaded in-memory board automatically to get a new message.
 
 Unused definitions can be purged by Cadence during save/refresh/manual-placement
 operations. Do not assume that saving and reopening an all-unplaced board will
 retain them; re-inspect the actual active database.
+
+The pad interpretation was checked against the installed 25.1
+`axlDbidDoc.txt`, `axlPadDbidDoc.txt`, `axlDBGetPad.txt` and
+`axlDBCreatePadStack.txt` references. They define pad bounds as relative,
+separate hole type from nominal and actual drill/slot dimensions, and expose
+native line/arc boundaries and corner metadata. These local references are
+development evidence, not redistributed assets or proof of runtime acceptance.

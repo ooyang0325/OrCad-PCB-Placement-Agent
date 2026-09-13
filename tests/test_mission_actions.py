@@ -5,10 +5,12 @@ from pathlib import Path
 import tempfile
 import unittest
 import uuid
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from orcad_placement_agent.agent_tools import AgentActions, AgentActionError
 from orcad_placement_agent.protocol import Receipt
+from orcad_placement_agent.session import write_json
+from orcad_placement_agent.transport import IndeterminateDelivery
 from orcad_placement_agent.visuals import encode_png
 from tests.test_board import managed_snapshot
 
@@ -114,6 +116,9 @@ class MissionActionTests(unittest.TestCase):
             self.assertIn("UNPLACED", prepared["summary"])
             self.assertEqual(prepared["progress"]["placement"]["verified_placed_count"], count)
             digest = prepared["proposal_sha256"]
+            evidence = self.call("read-proposal", kind="placement", proposal=digest)
+            self.assertEqual(evidence["visual"], prepared["visual"])
+            self.assertEqual(len(self.editor.requests), count)
             result = self.call("apply", proposal=digest)
             self.assertEqual(result["status"], "applied")
             self.assertNotIn("visual_error", result)
@@ -126,7 +131,11 @@ class MissionActionTests(unittest.TestCase):
         self.assertEqual(len(self.editor.requests), 3)
         prepared = self.call("prepare-save")
         digest = prepared["proposal_sha256"]
-        result = self.call("apply-save", proposal=digest, confirmation=f"SAVE {digest}")
+        evidence = self.call("read-proposal", kind="save", proposal=digest)
+        self.assertEqual(evidence["freshness"], "archived")
+        self.assertEqual(evidence["visual"], prepared["visual"])
+        self.assertEqual(len(self.editor.requests), 3)
+        result = self.call("apply-save", proposal=digest)
         self.assertEqual(result["status"], "saved")
         self.assertTrue(result["artifact_available"])
         self.assertFalse(result["reopened"])
@@ -145,7 +154,7 @@ class MissionActionTests(unittest.TestCase):
         prepared = self.call("prepare-save")
         self.editor.fail_capture = True
         digest = prepared["proposal_sha256"]
-        result = self.call("apply-save", proposal=digest, confirmation=f"SAVE {digest}")
+        result = self.call("apply-save", proposal=digest)
         self.assertEqual(result["status"], "saved")
         self.assertIn("visual_error", result)
         self.assertEqual(len(self.editor.requests), 1)
@@ -159,6 +168,88 @@ class MissionActionTests(unittest.TestCase):
                 self.call("mission-next", mission=planned["mission"])
         self.assertEqual(list(self.editor.root.glob("proposal-*.json")), [])
         self.assertEqual(self.editor.requests, [])
+
+    def test_interrupted_dispatch_blocks_status_next_and_replanning_without_native_reads(self):
+        planned = self.plan()
+        mission = planned["mission"]
+        prepared = self.call("mission-next", mission=mission)
+        digest = prepared["proposal_sha256"]
+        with patch.object(self.editor, "exchange", side_effect=IndeterminateDelivery("Receipt lost")) as native:
+            with self.assertRaises(IndeterminateDelivery):
+                self.call("apply", proposal=digest)
+            native.assert_called_once()
+        self.assertFalse((self.editor.root / "pending.json").exists())
+        before = sorted(path.name for path in self.editor.root.glob("proposal-*.json"))
+        self.actions.capture = Mock(side_effect=AssertionError("Do not inspect over an unresolved dispatch"))
+        for action in ("mission-status", "mission-next"):
+            result = self.call(action, mission=mission)
+            self.assertEqual(result["status"], "blocked")
+            self.assertEqual(result["phase"], "execution_reconciliation")
+            self.assertEqual(result["execution"]["unresolved"][0]["proposal"], digest)
+            self.assertEqual(result["next_tool"], "pcb_execution_status")
+            self.assertNotIn("progress", result)
+        self.assertEqual(self.plan()["phase"], "execution_reconciliation")
+        self.actions.capture.assert_not_called()
+        self.assertEqual(before, sorted(path.name for path in self.editor.root.glob("proposal-*.json")))
+
+    def test_late_recorded_success_allows_fresh_readback_without_replaying(self):
+        planned = self.plan()
+        mission = planned["mission"]
+        prepared = self.call("mission-next", mission=mission)
+        digest = prepared["proposal_sha256"]
+        request_id = "e" * 32
+        write_json(self.editor.root / f"dispatch-{digest}.json", {
+            "proposal_sha256": digest, "request_id": request_id,
+        })
+        self.assertEqual(self.call("mission-next", mission=mission)["status"], "blocked")
+        candidate = prepared["candidate"]
+        self.editor.parts[candidate["refdes"]].update(
+            x=candidate["x"], y=candidate["y"], angle=candidate["angle"], placed="1",
+        )
+        write_json(self.editor.root / f"{request_id}.receipt.json",
+                   Receipt(self.editor.nonce, request_id, "applied", "Late fake readback", self.editor.records()).to_dict())
+        self.assertEqual(self.call("execution-status", proposal=digest)["status"], "applied")
+        following = self.call("mission-next", mission=mission)
+        self.assertEqual(following["status"], "prepared")
+        self.assertEqual(following["execution"]["applied_count"], 1)
+        self.assertEqual(following["progress"]["placement"]["verified_placed_count"], 1)
+        self.assertNotEqual(following["candidate"]["refdes"], candidate["refdes"])
+        self.assertEqual(self.editor.requests, [])
+
+    def test_terminal_rejection_stops_the_mission_until_reviewed_replanning(self):
+        for status in ("rejected", "rolled_back"):
+            planned = self.plan()
+            mission = planned["mission"]
+            prepared = self.call("mission-next", mission=mission)
+            digest, request_id = prepared["proposal_sha256"], uuid.uuid4().hex
+            write_json(self.editor.root / f"dispatch-{digest}.json", {
+                "proposal_sha256": digest, "request_id": request_id,
+            })
+            write_json(self.editor.root / f"{request_id}.receipt.json",
+                       Receipt(self.editor.nonce, request_id, status, "Fake native failure", self.editor.records()).to_dict())
+            for action in ("mission-status", "mission-next"):
+                result = self.call(action, mission=mission)
+                self.assertEqual(result["phase"], "execution_rejected")
+                self.assertEqual(result["execution"]["failed"][0]["status"], status)
+                self.assertNotIn("proposal_sha256", result)
+            self.assertEqual(self.plan()["status"], "mission_planned")
+        self.assertEqual(self.editor.requests, [])
+
+    def test_geometric_coverage_is_not_completion_with_an_unknown_dispatch(self):
+        planned = self.plan()
+        prepared = self.call("mission-next", mission=planned["mission"])
+        digest = prepared["proposal_sha256"]
+        write_json(self.editor.root / f"dispatch-{digest}.json", {
+            "proposal_sha256": digest, "request_id": "e" * 32,
+        })
+        for target in planned["plan"]["targets"]:
+            self.editor.parts[target["refdes"]].update(
+                x=target["x"], y=target["y"], angle=target["angle"], placed="1",
+            )
+        result = self.call("mission-status", mission=planned["mission"])
+        self.assertEqual(result["status"], "blocked")
+        self.assertNotIn("progress", result)
+        self.assertEqual(result["execution"]["unresolved"][0]["proposal"], digest)
 
 
 if __name__ == "__main__":

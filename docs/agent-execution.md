@@ -11,13 +11,26 @@ operations, not shell access or arbitrary SKILL evaluation.
 | PCB placement orchestrator | Inspect mission/setup state, track phases and delegate the three workers; no direct prepare/apply/load/save authority |
 | PCB placement planner | Inspect the bound board or library setup visually and prepare an exact proposal |
 | PCB layout reviewer | Independently inspect placement/setup evidence and read recorded execution outcomes |
-| PCB placement executor | Inspect, autonomously apply an exact reviewed proposal, request interactive LOAD or separate SAVE approval, and inspect outcomes |
+| PCB placement executor | Provision sessions/fixtures, execute authorized PCB work using typed tools or inspected controller/CLI/raw SKILL paths, and verify native and saved outcomes |
 
 All four profiles include `pcb_inspect` and must examine the returned PNG.
-None has unrestricted `execute`, `edit`, or `web` tools. Only the orchestrator
-has delegation/task-tracking tools, constrained by its PCB-role handoff policy.
-If a host does not provide the named tools or image understanding, the agent
-must report the missing capability instead of using a shell/GUI workaround.
+The executor additionally has `execute` and `edit`, plus `agent` restricted to
+the planner and reviewer for independent handoffs. The coordinator delegates
+and tracks work; it does not execute shell commands or edit designs. Planning
+and review retain their read-only design boundaries.
+
+The execution policy authorizes in-scope startup, window selection, bootstrap
+loading, library work, raw SKILL and save/reopen without per-operation approval.
+A missing editor or saved fixture should trigger executor provisioning using
+the original fixture recipe, not an immediate request for a user-supplied board.
+Require process/native board identity, recoverable baselines, native checks and
+reconciliation of uncertain results. Host permissions and licensing still apply.
+
+MCP and app LOAD/SAVE now dispatch exact proposals without elicitation or mode
+gates. The table below describes the implemented typed tools. Older installed
+runtimes need updating and restarting; never fabricate human responses or claim
+a rejected call succeeded. New mutation paths require native fixture acceptance;
+raw SKILL does not inherit typed rollback or replay guarantees.
 
 ## Bounded tools
 
@@ -27,11 +40,13 @@ must report the missing capability instead of using a shell/GUI workaround.
 | `pcb_reference_search` | Retrieve bounded bundled-rule candidates |
 | `pcb_reference_rule` | Read a complete rule with conditions, checks, limits and synthesis provenance |
 | `pcb_sessions` | List recorded staged sessions and declared backend scope; neither proves live readiness |
+| `pcb_placement_intake` | Read the exact attached managed board and route missing packages to preparation or a supported board to planning; no mutation |
+| `pcb_read_proposal` | Return exact placement/library/save proposal data and its archived preparation PNG without native commands |
 | `pcb_inspect` | Read fresh native state around capture of only the bound Cadence window |
 | `pcb_inspection_status` | Report an unresolved read-only snapshot, or reconcile its exact request ID without replay |
 | `pcb_inspect_libraries` | Inspect the bound all-unplaced library-setup inventory and actual PNG; not full placement readiness |
 | `pcb_prepare_library_load` | Prepare exact missing package definitions from verified staged files with fresh PNG evidence; no loading |
-| `pcb_load_libraries` | Obtain exact human LOAD approval and load only the reviewed in-memory definitions once |
+| `pcb_load_libraries` | Autonomously load only the exact reviewed in-memory definitions once |
 | `pcb_library_load_status` | Read/reconcile the exact LOAD outcome without replay; full placement inspection remains separate |
 | `pcb_plan_placement` | Plan a complete managed-board mission from explicit requirements and native pin/footprint data |
 | `pcb_placement_status` | Reconcile fresh native placement coverage and routing screening |
@@ -40,19 +55,26 @@ must report the missing capability instead of using a shell/GUI workaround.
 | `pcb_apply_placement` | Autonomously apply one exact visually bound proposal in memory |
 | `pcb_execution_status` | Read or reconcile the result of an already prepared proposal without replaying it |
 | `pcb_prepare_save` | Prepare a visually bound new-revision save proposal, without saving |
-| `pcb_save_revision` | Obtain separate exact human SAVE approval and save a new managed revision |
+| `pcb_save_revision` | Autonomously save an exact visually bound proposal as a new managed revision |
 | `pcb_save_status` | Read/reconcile the exact Save result without replay; report reopen separately |
 
 Board tools accept a managed session name such as `board-<id>`, never an arbitrary
 directory, executable, native command, or output path. The session must already
-be staged and attached by the operator's documented CLI workflow. Do not choose
+be staged and attached before using them; the executor may perform that CLI
+setup autonomously. Do not choose
 an unrelated session just because it appears first in the list.
 
-For [library setup](library-loading.md), the operator must explicitly attach
+`pcb_read_proposal` takes `session`, `proposal`, and `kind` (`placement`,
+`library`, or `save`). Its `freshness: archived` result is an evidence handoff,
+not a current board inspection or authorization. The reviewer and executor can
+retrieve it themselves rather than asking the user to provide a filesystem PNG.
+An image-rendering failure is still a failed visual checkpoint.
+
+For typed [library setup](library-loading.md), the executor may attach
 with `--library-setup` to a managed-board-v1 session with known nonempty logical
 inventory and no placed symbols. Every role examines the actual setup PNG;
-only the planner prepares the verified staged PSM/PAD/FSM/SSM cache proposal,
-and only the executor requests LOAD. Loading does not import logical designs,
+the planner or executor prepares the verified staged PSM/PAD/FSM/SSM cache proposal
+for independent review, and only the executor performs LOAD. The typed loader does not import logical designs,
 refresh existing definitions, place components, save, guarantee persistence or
 change global settings. It is non-atomic and can leave a partial or uncertain
 outcome. Never infer rollback or replay a LOAD; use `pcb_library_load_status`.
@@ -112,12 +134,11 @@ The extension reads the frozen proposal and visual binding, rechecks the exact
 refdes/pose/pivot/board, and autonomously dispatches it once. A planner
 recommendation alone is not executable: the exact proposal must complete the
 independent review handoff and all visual/native checks.
-Before prompting for library setup, the app loader validates access to the
-actual proposal PNG. It displays the exact package list and staged asset
-filenames, source-relative paths and sizes, then requests `LOAD <proposal-id>`.
-Missing image access blocks that prompt; successful access is not proof that
-the agents examined the image. Revision saving requests a separately prepared
-`SAVE <proposal-id>`. Neither phrase authorizes either of the other operations.
+Before LOAD or SAVE, MCP and app tools validate access to the actual proposal
+PNG and revalidate the proposal binding. Missing image access blocks dispatch;
+successful access is not proof that the agents examined the image. No human
+confirmation is requested. Each operation uses its own exact proposal and
+single-use dispatch record, not the other operation's request.
 If the operator staged with the optional unverified-3D policy, both snapshot
 forms disclose the exact unverified names and warnings; LOAD, Apply and SAVE
 descriptions retain the warning. Carry it through every review and handoff.
@@ -125,8 +146,8 @@ No tool field can toggle this staging policy, and approval does not verify
 3D content or mechanical clearance.
 
 The [portable MCP package](installation.md) enables bounded placement writes by
-default. `--allow-interactive-writes` applies to the separately prepared
-library LOAD and revision Save flows; no installer or manifest enables unattended saves.
+default, including library LOAD and revision SAVE. `--allow-interactive-writes`
+is now an ignored compatibility flag; no interactive mode or elicitation is needed.
 
 Before dispatch, the controller consumes the proposal once and the native
 adapter rechecks the full scene. An accepted Windows message is not success:

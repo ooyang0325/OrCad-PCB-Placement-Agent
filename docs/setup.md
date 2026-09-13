@@ -55,7 +55,7 @@ supporting files; controller code remains separate. Save source changes first,
 and do not mistake copied library files for definitions loaded into the editor.
 For known all-unplaced `managed-board-v1` inventory with missing packages,
 use the separate [library-setup workflow](library-loading.md), beginning with
-operator `attach --library-setup`. Exact human LOAD approval is separate from
+an `attach --library-setup` binding. Autonomous LOAD remains separate from
 placement and Save; full placement inspection still gates complex geometry.
 Loading is non-atomic, in memory only, and its native acceptance is pending.
 

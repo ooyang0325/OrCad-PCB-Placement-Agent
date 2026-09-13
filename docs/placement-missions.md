@@ -20,9 +20,20 @@ The implementation accepts 1-256 logical components with embedded, matching
 PACKAGE definitions; zero or more may be physically placed. It requires
 millimeters/4/10000, top-side orthogonal poses, simple closed
 [nonrectangular outline/keepin contours](nonrectangular-outlines.md), rectangular
-top keepouts, straight supported package linework and simple rectangular, square
-or circular SMT pads. A PRIMARY stackup may have 2-32 positive conductor
+top keepouts, straight supported package linework and top-side regular SMT pads.
+Supported pad figures are rectangular, square, circular, X/Y oblong, and
+bounded rounded/chamfered rectangles. Their complete native line/arc boundary,
+offset, corner selection and radius remain in the protected scene, not just
+the placement envelope. A PRIMARY stackup may have 2-32 positive conductor
 layers. Required placement DRC must already be enabled and current.
+
+The 0.10.0 reader accepts Cadence's `circle_drill` template label only when all
+nominal drill/slot dimensions are zero and the stack is otherwise hole-free,
+top-only and non-derived. It does not mistake a zero diameter for a hole-free
+slot: slot width/height and actual-hole/slot metadata are checked separately.
+True through-hole, drilled, slotted, external SHAPE/FLASH, donut and polygon
+pads remain unsupported. Extended SMT-variant native placement acceptance is
+pending; Python source-contract checks are not that proof.
 
 [Flat groups, placement rooms and named constraint sets](grouped-constraints.md)
 are preserved as native design policy. Positive plane layers are included in
@@ -83,7 +94,7 @@ If required packages are missing and all logical components are unplaced, the
 operator can use `attach --library-setup` on the exact managed session.
 `pcb_inspect_libraries` and `pcb_prepare_library_load` provide actual PNGs and
 the exact missing packages/verified staged PSM/PAD/FSM/SSM cache for review.
-The executor requests separate exact human LOAD via `pcb_load_libraries`;
+The executor dispatches a separate exact autonomous LOAD via `pcb_load_libraries`;
 `pcb_library_load_status` reconciles its outcome without replay. LOAD is
 non-atomic and in memory only, with partial/uncertain outcomes possible. It
 does not import logical parts, refresh existing definitions, place components,
@@ -152,6 +163,13 @@ first-feasible search, not a global-optimum claim.
 
 ## Closed loop through MCP or app tools
 
+For a complete agent-driven workflow, start with `pcb_placement_intake` and
+the [continuous coordinator](placement-orchestration.md#continuous-mission-driver).
+It routes missing packages to preparation/review before requesting LOAD, then
+returns to full placement inspection. Only an unbound session needs attachment.
+The reviewer/executor fetch the exact archived preparation PNG with
+`pcb_read_proposal`; current state remains a separate visual checkpoint.
+
 1. After full placement inspection succeeds, call `pcb_plan_placement` with the
    exact managed session and `requirements_json`. Examine its actual PNG and complete target plan.
    Resolve blockers before any execution. The plan is stored locally and
@@ -178,6 +196,22 @@ If native execution is indeterminate, use the exact proposal's
 `pcb_execution_status`, not another Apply. A separate pending snapshot is
 reconciled only by its exact `pcb_inspection_status` request.
 
+Mission planning/status/next also inspect the session's recorded placement
+dispatches before reading the board. A consumed dispatch with no terminal
+receipt blocks even if `pending.json` is absent, for example after interruption
+between publishing the one-use dispatch and starting transport. An explicit
+`indeterminate` receipt also blocks continuation. The returned
+`execution_reconciliation` phase identifies exact proposal/request IDs and the
+recovery tool; it contains no fresh placement-coverage claim.
+
+Terminal rejected or rolled-back proposals stop their associated mission with
+`execution_rejected`. Send those results to the planner/reviewer before creating
+a revised mission; do not keep preparing the same failing target. A new mission
+cannot bypass an unresolved dispatch from an older mission. Once exact success
+has been reconciled, normal fresh readback resumes. The `execution.applied_count`
+counts recorded dispatch outcomes, not verified placed components or saved files.
+Corrupt or ambiguous history is an error, never an empty successful history.
+
 CLI equivalents for the read-only mission steps:
 
 ```powershell
@@ -203,7 +237,7 @@ The engine explicitly reports routing review as not performed and routability
 as unverified; the independent reviewer must assess the relevant gates.
 
 For persistence, call `pcb_prepare_save`, examine its scene/image and destination,
-then use `pcb_save_revision`. This obtains a **separate exact SAVE approval** and
+then use `pcb_save_revision`. This autonomously dispatches the exact proposal and
 writes only a new managed revision. It never overwrites the source. Recover an
 uncertain save using `pcb_save_status` without resending it. A missing post-image
 does not erase a recorded Save outcome.
@@ -211,5 +245,5 @@ does not erase a recorded Save outcome.
 Native Save success and file existence are reported separately from reopening;
 the save tools do not automatically reopen the design or claim that check ran.
 Do not call a result reopened, routed, or manufacturing-ready without the
-corresponding evidence. Portable writes remain disabled by default, and
-Autopilot/auto-answering clients remain unsupported for native mutations.
+corresponding evidence. Portable LOAD/SAVE and placement proposals dispatch
+autonomously by default; no interactive approval or auto-answer hook is needed.

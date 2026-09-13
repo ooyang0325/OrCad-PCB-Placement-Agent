@@ -303,26 +303,67 @@ procedure(opaManagedLocalGeometry(data origin angle)
     )
 )
 
+procedure(opaManagedSmtHoleFree(holeType diameter slotWidth slotHeight)
+    if(member(holeType '("none" "circle_drill")) &&
+        numberp(diameter) && diameter == 0.0 &&
+        numberp(slotWidth) && slotWidth == 0.0 &&
+        numberp(slotHeight) && slotHeight == 0.0 then t else nil)
+)
+
+procedure(opaManagedPadStyle(figureName radius corners inside sides box)
+    let((tokens seen limit)
+        opaRequire(member(figureName '("RECTANGLE" "SQUARE" "CIRCLE"
+            "OBLONG_X" "OBLONG_Y" "ROUNDED_RECTANGLE" "CHAMFERED_RECTANGLE"))
+            "Unsupported native SMT pad figure.")
+        opaRequire(member(inside '(nil 0 0.0)) && member(sides '(nil 0))
+            "Donut or polygon SMT pad parameters are unsupported.")
+        if(member(figureName '("RECTANGLE" "ROUNDED_RECTANGLE" "CHAMFERED_RECTANGLE")) then
+            when(radius
+                opaStable(radius)
+                limit = min(caadr(box) - caar(box) cadadr(box) - cadar(box)) / 20000.0
+                opaRequire(numberp(radius) && radius >= 0 && radius <= limit
+                    "SMT pad corner radius exceeds its native envelope."))
+            when(corners
+                opaRequire(stringp(corners) && strlen(corners) <= 11
+                    "Unsupported SMT pad corner selection.")
+                tokens = parseString(corners "-")
+                opaRequire(tokens && buildString(tokens "-") == corners
+                    "Malformed SMT pad corner selection.")
+                foreach(token tokens
+                    opaRequire(member(token '("UR" "UL" "LR" "LL")) && !member(token seen)
+                        "Unknown or duplicate SMT pad corner.")
+                    seen = cons(token seen)))
+        else
+            opaRequire(!corners && member(radius '(nil 0 0.0))
+                "Unexpected corner parameters on a primitive SMT pad."))
+        t
+    )
+)
+
 procedure(opaManagedPad(pad)
-    let((active box offset)
+    let((active box offset boundary budget)
         opaRequire(pad "Missing native pad data.")
         active = !member(pad->figureName '(nil "NULL"))
         when(active
-            opaRequire(member(pad->figureName '("RECTANGLE" "SQUARE" "CIRCLE")) &&
-                member(pad->layer '("ETCH/TOP" "PIN/SOLDERMASK_TOP"
+            opaRequire(member(pad->layer '("ETCH/TOP" "PIN/SOLDERMASK_TOP"
                     "PIN/PASTEMASK_TOP")) &&
                 pad->type == "REGULAR" && member(pad->name '(nil "")) &&
-                member(pad->flash '(nil "")) && !pad->corners &&
-                member(pad->radius '(nil 0 0.0)) &&
-                member(pad->inside '(nil 0 0.0)) &&
-                member(pad->sides '(nil 0))
-                "Only simple top-side regular SMT and mask pads are supported.")
+                member(pad->flash '(nil ""))
+                "Only top-side regular SMT and mask pads without external symbols are supported.")
             box = opaManagedBox(pad->bBox)
-            offset = opaPoint(pad->offset))
+            offset = opaPoint(pad->offset)
+            opaManagedPadStyle(pad->figureName pad->radius pad->corners pad->inside pad->sides box)
+            opaRequire(listp(pad->figure) && length(pad->figure) == 1
+                "An active SMT pad requires one complete native boundary.")
+            budget = makeTable('opaManagedPadBudget 0)
+            boundary = opaLibraryPath(car(pad->figure) 0 budget))
+        unless(active
+            opaRequire(!pad->figure "NULL SMT pad unexpectedly has native boundary geometry."))
         list(pad->layer pad->type pad->figureName
             if(active then box else opaBox(pad->bBox))
             if(pad->offset then opaPoint(pad->offset) else nil)
-            pad->flash pad->name pad->corners pad->radius pad->inside pad->sides)
+            pad->flash pad->name pad->corners pad->radius pad->inside pad->sides
+            boundary)
     )
 )
 
@@ -333,17 +374,37 @@ procedure(opaManagedPadstacks(design)
         foreach(stack design->padstacks
             opaManagedObjectGuard(stack)
             opaManagedName(stack->name)
-            opaRequire(!assoc(stack->name rows) && !stack->isThrough &&
-                stack->holeType == "none" && stack->drillDiameter == 0.0 &&
-                equal(stack->startEnd '("ETCH/TOP" "ETCH/TOP")) &&
-                !stack->pluralVia && !stack->uvia && !stack->isPadRef &&
-                !stack->derived && !stack->multiDrillData &&
-                !stack->holeCounterType && !stack->backdrillDiameter &&
-                member(stack->padSuppresion '(nil t))
-                "Duplicate, drilled, derived or advanced padstack.")
+            foreach(check list(
+                list("duplicate-name" stack->name !assoc(stack->name rows))
+                list("isThrough" stack->isThrough !stack->isThrough)
+                list("holeType" stack->holeType member(stack->holeType '("none" "circle_drill")))
+                list("drillDiameter" stack->drillDiameter stack->drillDiameter == 0.0)
+                list("drillSizeWidth" stack->drillSizeWidth stack->drillSizeWidth == 0.0)
+                list("drillSizeHeight" stack->drillSizeHeight stack->drillSizeHeight == 0.0)
+                list("drillFigureName" stack->drillFigureName member(stack->drillFigureName '(nil "NULL")))
+                list("drillNonStandard" stack->drillNonStandard !stack->drillNonStandard)
+                list("actualHoleDiameter" stack->actualHoleDiameter member(stack->actualHoleDiameter '(nil 0 0.0)))
+                list("actualSlotWidth" stack->actualSlotWidth member(stack->actualSlotWidth '(nil 0 0.0)))
+                list("actualSlotHeight" stack->actualSlotHeight member(stack->actualSlotHeight '(nil 0 0.0)))
+                list("startEnd" stack->startEnd equal(stack->startEnd '("ETCH/TOP" "ETCH/TOP")))
+                list("pluralVia" stack->pluralVia !stack->pluralVia)
+                list("uvia" stack->uvia !stack->uvia)
+                list("isPadRef" stack->isPadRef !stack->isPadRef)
+                list("derived" stack->derived !stack->derived)
+                list("multiDrillData" stack->multiDrillData !stack->multiDrillData)
+                list("holeCounterType" stack->holeCounterType !stack->holeCounterType)
+                list("backdrillDiameter" stack->backdrillDiameter !stack->backdrillDiameter)
+                list("padSuppresion" stack->padSuppresion member(stack->padSuppresion '(nil t))))
+                opaRequire(nth(2 check) sprintf(nil
+                    "Padstack %s: unsupported %s=%L. Full placement requires simple top-side SMT padstacks; no geometry was changed."
+                    stack->name car(check) cadr(check))))
+            opaRequire(opaManagedSmtHoleFree(stack->holeType stack->drillDiameter
+                stack->drillSizeWidth stack->drillSizeHeight)
+                sprintf(nil "Padstack %s: a hole-free SMT definition is required." stack->name))
             pads = nil
             bounds = nil
-            opaRequire(length(stack->pads) <= 128 "Oversized padstack.")
+            opaRequire(length(stack->pads) <= 128
+                sprintf(nil "Padstack %s: pad count %d exceeds 128." stack->name length(stack->pads)))
             foreach(pad stack->pads
                 pads = cons(opaManagedPad(pad) pads))
             foreach(pad pads
@@ -356,12 +417,14 @@ procedure(opaManagedPadstacks(design)
                     bounds = opaManagedUnion(bounds opaWorldBox(box offset 0))))
             top = opaManagedPad(axlDBGetPad(stack "TOP" "REGULAR"))
             opaRequire(!member(nth(2 top) '(nil "NULL")) && member(top pads) && bounds
-                "Padstack has no accounted-for regular top pad.")
+                sprintf(nil "Padstack %s: no accounted-for regular top pad." stack->name))
             rows = cons(list(stack->name bounds opaSortedData(pads)
                 list(stack->type stack->usage stack->plating stack->holeType
                      stack->drillDiameter stack->drillSizeWidth stack->drillSizeHeight
                      stack->drillOffset stack->spanLockCount stack->startEnd
-                     stack->padSuppresion opaProps(stack))) rows))
+                     stack->padSuppresion opaProps(stack)
+                     stack->drillFigureName stack->drillNonStandard
+                     stack->actualHoleDiameter stack->actualSlotWidth stack->actualSlotHeight)) rows))
         opaSortedData(rows)
     )
 )

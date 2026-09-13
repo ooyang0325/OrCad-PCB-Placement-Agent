@@ -30,7 +30,16 @@ class OrchestrationContractTests(unittest.TestCase):
         self.assertTrue(capabilities["move_existing_component"])
         self.assertTrue(capabilities["model_can_authorize_changes"])
         self.assertTrue(capabilities["portable_writes_enabled_by_default"])
-        self.assertTrue(capabilities["save_human_approval_required"])
+        self.assertFalse(capabilities["save_human_approval_required"])
+        self.assertFalse(capabilities["library_human_approval_required"])
+        self.assertTrue(capabilities["placement_intake_routing"])
+        self.assertTrue(capabilities["archived_proposal_images"])
+        self.assertFalse(capabilities["agent_editor_setup"])
+        self.assertTrue(capabilities["unattended_library_loading"])
+        self.assertTrue(capabilities["unattended_revision_save"])
+        self.assertIn("OBLONG_X", capabilities["supported_smt_pad_figures"])
+        self.assertIn("ROUNDED_RECTANGLE", capabilities["supported_smt_pad_figures"])
+        self.assertNotIn("SHAPE", capabilities["supported_smt_pad_figures"])
         self.assertNotIn("place", OPERATIONS)
         self.assertNotIn("import", OPERATIONS)
         self.assertNotIn("route", OPERATIONS)
@@ -61,7 +70,8 @@ class OrchestrationContractTests(unittest.TestCase):
         body = " ".join(body.split())
         fields = dict(line.split(":", 1) for line in frontmatter.splitlines() if line.strip())
         tools = set(json.loads(fields["tools"]))
-        self.assertTrue({"agent", "todo", "pcb_inspect", "pcb_sessions"} <= tools)
+        self.assertTrue({"agent", "todo", "pcb_inspect", "pcb_sessions",
+                         "pcb_placement_intake", "pcb_read_proposal"} <= tools)
         self.assertFalse({"execute", "edit", "web", "pcb_apply_placement", "pcb_prepare_placement"} & tools)
         self.assertEqual(fields["disable-model-invocation"].strip(), "true")
         for worker in ("PCB placement planner", "PCB layout reviewer", "PCB placement executor"):
@@ -85,6 +95,54 @@ class OrchestrationContractTests(unittest.TestCase):
                 "approval", "untrusted", "blocked",
             ):
                 self.assertIn(requirement, text, f"{path.name}: {requirement}")
+
+    def test_continuous_driver_recovers_supported_handoffs_without_manual_relay(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in (root / ".github" / "agents" / "pcb-placement-orchestrator.agent.md",
+                     root / "skills" / "pcb-placement-orchestrate" / "SKILL.md"):
+            text = " ".join(path.read_text(encoding="utf-8").split())
+            for requirement in ("Continuous mission driver", "pcb_placement_intake", "setup_required",
+                                "intake_ready", "pcb_read_proposal", "libraries_loaded", "independent",
+                                '"continue"', "without per-operation human approval",
+                                "session and fixture preparation", "Unsupported features"):
+                self.assertIn(requirement, text)
+            for obsolete in ("separate LOAD/SAVE approval", "requests genuine human LOAD",
+                             "executor for genuine human LOAD approval"):
+                self.assertNotIn(obsolete, text)
+        for name in ("pcb-layout-reviewer", "pcb-placement-executor"):
+            text = (root / ".github" / "agents" / f"{name}.agent.md").read_text(encoding="utf-8")
+            fields = dict(line.split(":", 1) for line in text.split("---", 2)[1].splitlines() if line.strip())
+            tools = json.loads(fields["tools"])
+            self.assertIn("pcb_read_proposal", tools)
+            if name == "pcb-layout-reviewer":
+                self.assertNotIn("execute", tools)
+                self.assertNotIn("edit", tools)
+            else:
+                self.assertTrue({"execute", "edit"} <= set(tools))
+
+    def test_executor_can_provision_and_execute_with_recovery(self):
+        root = Path(__file__).resolve().parents[1]
+        text = (root / ".github" / "agents" / "pcb-placement-executor.agent.md").read_text(encoding="utf-8")
+        frontmatter, body = text.split("---", 2)[1:]
+        fields = dict(line.split(":", 1) for line in frontmatter.splitlines() if line.strip())
+        tools = set(json.loads(fields["tools"]))
+        self.assertTrue({"read", "search", "edit", "execute", "agent",
+                         "pcb_prepare_library_load", "pcb_load_libraries",
+                         "pcb_prepare_save", "pcb_save_revision"} <= tools)
+        self.assertEqual(set(json.loads(fields["agents"])),
+                         {"PCB placement planner", "PCB layout reviewer"})
+        body = " ".join(body.split())
+        for requirement in (
+            "without per-operation human approval", "raw SKILL", "launch Cadence",
+            "fixtures\\access-proof\\README.md", "recoverable baseline",
+            "native readback", "Do not replay", "Host permissions", "disposable fixture",
+            "MCP LOAD/SAVE dispatches autonomously",
+            "Software tests do not establish native acceptance",
+        ):
+            self.assertIn(requirement, body)
+        for obsolete in ("only to request its genuine human LOAD approval",
+                         "human SAVE prompt", "No shell execution"):
+            self.assertNotIn(obsolete, body)
 
 
 if __name__ == "__main__":

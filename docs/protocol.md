@@ -97,8 +97,28 @@ before sending the request; retrying the same proposal cannot send the move
 again. A native state change after review still causes rejection, even when the
 proposal file is unchanged.
 
-Saving requires a separate `SAVE <snapshot-id>` confirmation. It neither
-overwrites the original source nor implies that Apply automatically saved.
+An existing `approval-<proposal>.json` from the older controller also consumes
+that proposal. Upgrading to `dispatch-<proposal>.json` does not reset its
+single-use state. Recovery validates the exact proposal/request association,
+session nonce and placement receipt status. Both record formats for the same
+proposal, or different proposals sharing a request ID, are ambiguous and block
+progress rather than choosing one as authoritative.
+An unresolved earlier placement also blocks a different proposal's Apply and
+new mission intake, even if there is no `pending.json`; a new digest is not an
+escape from uncertainty.
+
+Mission progression reads at most 4,096 unique placement dispatch records per
+session and rejects excess history instead of truncating it. This is a recovery
+resource bound, not a PCB design rule. Records are runtime operation evidence,
+not a replacement for Git history. No recovery path deletes pending state or
+automatically resends a placement.
+
+Saving requires a separate exact Save operation, not a confirmation phrase.
+Agent Save and LOAD create `save-dispatch-<id>.json` and
+`library-dispatch-<id>.json` with proposal and request identifiers before native
+delivery. Legacy approval records remain recognized for status and replay
+prevention. Conflicting old/new records block rather than selecting one.
+Saving neither overwrites the original source nor implies that Apply saved.
 
 Only one request is in flight. The controller persists `pending.json` before
 dispatch. A timed-out send, missing receipt, malformed receipt, or failed

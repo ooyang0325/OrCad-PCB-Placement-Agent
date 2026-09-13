@@ -96,7 +96,7 @@ binary test inputs remain outside Git.
 
 First-symbol creation, pose changes, DRC rollback, Undo and save/reopen still
 require native acceptance. Placement now dispatches exact reviewed proposals
-autonomously; Save remains separately human-authorized. No Apply or Save was
+autonomously; Save now also dispatches autonomously. No Apply or Save was
 dispatched during the earlier read-only run, so this is not yet a demonstrated
 end-to-end Cadence placement result. See
 [the supported boundary and workflow](placement-missions.md).

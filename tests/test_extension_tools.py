@@ -46,31 +46,24 @@ h = harness();
 assert.equal((await h.apply.handler({ ...args, confirmation: `APPLY ${digest}` })).resultType, "failure");
 assert.equal(h.prompts.length, 0);
 assert.equal(h.requests.length, 0);
-h = harness({ answer: `APPLY ${digest}` });
-let save = h.tools.find(t => t.name === "pcb_save_revision");
-assert.equal((await save.handler(args)).resultType, "denied");
-assert.equal(h.requests.some(r => r.action === "apply-save"), false);
-h = harness({ answer: `SAVE ${digest}` });
-save = h.tools.find(t => t.name === "pcb_save_revision");
-assert.equal((await save.handler(args)).resultType, "success");
-assert.equal(h.requests[1].action, "apply-save");
-assert.equal(h.prompts[0].options.minLength, 69);
-for (const answer of [null, "yes", `APPLY ${digest}`, `SAVE ${digest}`]) {
-    h = harness({ answer });
-    const load = h.tools.find(t => t.name === "pcb_load_libraries");
-    assert.equal((await load.handler(args)).resultType, "denied");
-    assert.equal(h.requests.some(r => r.action === "load-libraries"), false);
+for (const [name, action] of [["pcb_save_revision", "apply-save"], ["pcb_load_libraries", "load-libraries"]]) {
+    h = harness({ supported: false });
+    const tool = h.tools.find(t => t.name === name);
+    assert.equal((await tool.handler(args)).resultType, "success");
+    assert.deepEqual(h.requests[1], { action, ...args });
+    assert.equal(h.prompts.length, 0);
+    assert.deepEqual(Object.keys(tool.parameters.properties), ["session", "proposal"]);
+    const count = h.requests.length;
+    assert.equal((await tool.handler({ ...args, confirmation: "yes" })).resultType, "failure");
+    assert.equal(h.requests.length, count);
 }
-h = harness({ supported: false, answer: `LOAD ${digest}` });
-assert.equal((await h.tools.find(t => t.name === "pcb_load_libraries").handler(args)).resultType, "denied");
-assert.equal(h.requests.length, 0);
 for (const loadStatus of ["libraries_loaded", "library_partial"]) {
     h = harness({ answer: `LOAD ${digest}`, loadStatus });
     const result = await h.tools.find(t => t.name === "pcb_load_libraries").handler(args);
     assert.equal(result.resultType, loadStatus === "library_partial" ? "failure" : "success");
     assert.equal(h.requests[1].action, "load-libraries");
-    assert.equal(h.requests[1].confirmation, `LOAD ${digest}`);
-    assert.equal(h.prompts[0].options.minLength, 69);
+    assert.equal("confirmation" in h.requests[1], false);
+    assert.equal(h.prompts.length, 0);
     assert.equal(JSON.parse(result.textResultForLlm).status, loadStatus);
 }
 h = harness({ answer: `LOAD ${digest}`, imageFailure: true });
@@ -98,6 +91,27 @@ assert.equal(JSON.parse(failedImage.textResultForLlm).status, "applied");
 assert.equal(h.requests.filter(r => r.action === "apply").length, 1);
 for (const tool of h.tools) assert.equal(tool.parameters.additionalProperties, false);
 assert.deepEqual(Object.keys(h.apply.parameters.properties), ["session", "proposal"]);
+h = harness({ supported: false });
+for (const [name, parameters, action] of [
+    ["pcb_placement_intake", { session: args.session }, "intake"],
+    ["pcb_read_proposal", { ...args, kind: "library" }, "read-proposal"],
+]) {
+    const tool = h.tools.find(t => t.name === name);
+    const result = await tool.handler(parameters);
+    assert.equal(result.resultType, "success");
+    assert.deepEqual(h.requests.at(-1), { action, ...parameters });
+    assert.equal(result.binaryResultsForLlm[0].type, "image");
+    const count = h.requests.length;
+    assert.equal((await tool.handler({ ...parameters, confirmation: "yes" })).resultType, "failure");
+    assert.equal(h.requests.length, count);
+}
+assert.equal(h.prompts.length, 0);
+h = harness({ preImageFailure: true });
+assert.equal((await h.tools.find(t => t.name === "pcb_read_proposal").handler({
+    ...args, kind: "placement",
+})).resultType, "failure");
+assert.equal(h.requests.length, 1);
+assert.equal(h.requests[0].action, "read-proposal");
 h = harness();
 for (const [name, args, action] of [
     ["pcb_reference_catalog", {}, "reference-catalog"],
@@ -127,15 +141,16 @@ const switched = createPlacementTools({
             warning: "Memory only", visual };
     },
 }).find(t => t.name === name);
-assert.equal((await switched.handler(args)).resultType, "denied");
-assert.equal(dispatched, false);
+assert.equal((await switched.handler(args)).resultType, "success");
+assert.equal(dispatched, true);
+assert.equal(modeChecks, 0);
 }
-console.log("Bounded autonomous placement, library load, and approved-save cases passed.");
+console.log("Autonomous placement, LOAD/SAVE and image-outcome cases passed.");
 """
 
 
 class ExtensionToolTests(unittest.TestCase):
-    def test_placement_is_autonomous_while_save_remains_approved(self):
+    def test_placement_load_and_save_are_autonomous_with_visual_checks(self):
         node = os.environ.get("OPA_NODE") or shutil.which("node")
         if not node or not Path(node).is_file():
             self.skipTest("Set OPA_NODE to an existing Node.js 20+ executable for extension tests.")

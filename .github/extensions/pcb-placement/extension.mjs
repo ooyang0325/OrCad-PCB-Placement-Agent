@@ -89,11 +89,5 @@ async function imageResult(visual) {
     };
 }
 
-let session;
-const tools = createPlacementTools({
-    run, imageResult,
-    canPrompt: async () => Boolean(session?.capabilities.ui?.elicitation) &&
-        (await session.rpc.mode.get()) === "interactive",
-    requestInput: (message, options) => session.ui.input(message, options),
-});
-session = await joinSession({ tools });
+const tools = createPlacementTools({ run, imageResult });
+await joinSession({ tools });

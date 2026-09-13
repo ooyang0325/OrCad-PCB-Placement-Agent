@@ -67,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
     attach.add_argument("--hwnd", type=lambda value: int(value, 0), required=True)
     attach.add_argument("--library-setup", action="store_true",
                         help="Bind for explicit library preparation before full package geometry is available; not placement readiness.")
-    libraries = commands.add_parser("libraries", help="Inspect and prepare staged library loading; native LOAD needs exact approval.")
+    libraries = commands.add_parser("libraries", help="Inspect, prepare and autonomously load exact staged library proposals.")
     library_commands = libraries.add_subparsers(dest="library_command", required=True)
     for operation in ("inspect", "prepare", "load", "status"):
         sub = library_commands.add_parser(operation)
@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         ("reconcile", "Read a late receipt without replaying the request."),
         ("propose", "Prepare and review an exact single-component pose."),
         ("apply", "Apply an exact proposal autonomously in memory."),
-        ("save", "Ask before saving the current managed board to a new revision."),
+        ("save", "Autonomously save the current managed board to a new revision."),
     ]:
         sub = commands.add_parser(command, help=help_text)
         sub.add_argument("--session", type=Path, required=True)
@@ -183,13 +183,10 @@ def main(argv: list[str] | None = None) -> int:
             if args.library_command in {"load", "status"}:
                 request["proposal"] = args.proposal
             if args.library_command == "load":
-                if not sys.stdin.isatty():
-                    raise SessionError("Library loading requires genuine interactive terminal input; no LOAD was sent.")
                 description = actions.dispatch({**request, "action": "describe-libraries"})
                 print(description["summary"])
                 print(f"Review image: {description['visual']['image_path']}")
                 print(description["warning"])
-                request["confirmation"] = input(f"Type LOAD {args.proposal} to authorize only these definitions: ")
             result = actions.dispatch(request)
             print(json.dumps(display_payload(result), indent=2, ensure_ascii=True))
             return 0 if (result["status"] in {"prepared", "library_inventory", "libraries_loaded", "not_dispatched"}
@@ -326,8 +323,6 @@ def _session_command(args: argparse.Namespace) -> int:
             snapshot_id = receipt.one("snapshot")[1]
             filename = f"revision-{uuid.uuid4().hex}.brd"
             print(f"Save current state of {session.working} to {session.root / filename}")
-            if input(f"Type SAVE {snapshot_id} to save this revision: ") != f"SAVE {snapshot_id}":
-                raise SessionError("Save was not approved; no save request was sent.")
             receipt = session.exchange(Request(
                 session.nonce, uuid.uuid4().hex, "save", snapshot_id, destination=filename
             ))

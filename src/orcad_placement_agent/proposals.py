@@ -12,6 +12,9 @@ from .protocol import (
 from .session import Session, SessionError, write_json
 
 
+MAX_DISPATCH_RECORDS = 4096
+
+
 @dataclass(frozen=True)
 class Component:
     refdes: str
@@ -172,6 +175,12 @@ def proposal_summary(proposal: dict[str, object]) -> str:
 
 def apply_proposal(session: Session, digest: str) -> Receipt:
     proposal = load_proposal(session, digest)
+    if (session.root / f"approval-{digest}.json").exists():
+        raise FileExistsError("This proposal was already consumed by a legacy approval; do not replay it.")
+    if (session.root / f"dispatch-{digest}.json").exists():
+        raise FileExistsError("This proposal was already consumed; do not replay it.")
+    if any(item["status"] == "indeterminate" for item in placement_dispatch_history(session)):
+        raise SessionError("An earlier placement dispatch is unresolved; reconcile it before applying a different proposal.")
     request_id = uuid.uuid4().hex
     write_json(session.root / f"dispatch-{digest}.json", {
         "proposal_sha256": digest, "request_id": request_id,
@@ -183,3 +192,75 @@ def apply_proposal(session: Session, digest: str) -> Receipt:
         proposal["refdes"], proposal["x"], proposal["y"], proposal["angle"],
     )
     return session.exchange(request)
+
+
+def load_dispatch_record(session: Session, digest: str) -> dict[str, object] | None:
+    if re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+        raise ProtocolError("Expected an exact proposal identifier for dispatch recovery.")
+    paths = [path for path in (
+        session.root / f"dispatch-{digest}.json", session.root / f"approval-{digest}.json",
+    ) if path.exists()]
+    if not paths:
+        return None
+    if len(paths) != 1:
+        raise SessionError("Both legacy and current dispatch records exist; resolve the ambiguous outcome without replay.")
+    path = paths[0]
+    record = session._read_json(path.name)
+    legacy = path.name.startswith("approval-")
+    expected = {"proposal_sha256", "request_id"} | ({"confirmation"} if legacy else set())
+    if (not isinstance(record, dict) or set(record) != expected
+            or record["proposal_sha256"] != digest
+            or (legacy and record["confirmation"] != f"APPLY {digest}")):
+        raise ProtocolError("Dispatch record does not match its exact proposal.")
+    identifier(record["request_id"])
+    return record
+
+
+def read_placement_receipt(session: Session, request_id: str) -> Receipt | None:
+    identifier(request_id)
+    path = session.root / f"{request_id}.receipt.json"
+    if not path.exists():
+        return None
+    receipt = Receipt.from_dict(session._read_json(path.name))
+    if (receipt.nonce != session.nonce or receipt.request_id != request_id
+            or receipt.status not in {"applied", "rejected", "rolled_back", "indeterminate"}):
+        raise ProtocolError("Recorded outcome does not match this placement dispatch.")
+    return receipt
+
+
+def placement_dispatch_history(session: Session) -> list[dict[str, object]]:
+    """Read bounded immutable dispatch evidence; never poll, replay or clear requests."""
+    digests = set()
+    for prefix in ("dispatch-", "approval-"):
+        for path in session.root.glob(prefix + "*.json"):
+            digest = path.name[len(prefix):-5]
+            if re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+                raise ProtocolError("Malformed placement dispatch artifact name.")
+            digests.add(digest)
+            if len(digests) > MAX_DISPATCH_RECORDS:
+                raise SessionError("Placement dispatch history exceeds the bounded recovery inventory.")
+    outcomes = []
+    requests = set()
+    for digest in sorted(digests):
+        record = load_dispatch_record(session, digest)
+        if record is None:
+            raise SessionError("A dispatch record disappeared during recovery.")
+        if record["request_id"] in requests:
+            raise ProtocolError("Different placement proposals share a native request identifier.")
+        requests.add(record["request_id"])
+        receipt = read_placement_receipt(session, record["request_id"])
+        mission = None
+        path = session.root / f"mission-proposal-{digest}.json"
+        if path.exists():
+            binding = session._read_json(path.name)
+            if (not isinstance(binding, dict) or set(binding) != {"mission", "proposal"}
+                    or binding["proposal"] != digest):
+                raise ProtocolError("Mission-to-proposal binding was changed.")
+            mission = identifier(binding["mission"])
+        outcomes.append({
+            "proposal": digest, "request": record["request_id"], "mission": mission,
+            "status": receipt.status if receipt is not None else "indeterminate",
+            "message": receipt.message if receipt is not None else
+                       "Dispatch consumed without a terminal receipt. Use exact execution status; do not create a replacement.",
+        })
+    return outcomes

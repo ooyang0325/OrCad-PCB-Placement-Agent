@@ -16,6 +16,12 @@ not raw SKILL, shell commands, GUI automation, or a different integration.
 
 ## Review sequence
 
+Retrieve the exact archived preparation PNG with `pcb_read_proposal` using the
+supplied session, proposal and explicit kind (`placement`, `library`, `save`).
+View its pixels; it does not replace the fresh inspection below. Return findings
+to the coordinator without asking the user to relay messages. A host image limit
+is an evidence blocker, not permission to use only a textual description.
+
 1. For placement call `pcb_inspect`; for an explicitly bound library-setup
    proposal call `pcb_inspect_libraries`. Personally examine the returned PNG.
    A setup snapshot is not full placement readiness. Do not rely only
@@ -48,13 +54,13 @@ staged PSM/PAD/FSM/SSM cache. Challenge unresolved dependencies, conflicts,
 existing-definition refresh, inferred pin geometry and any expansion into
 arbitrary paths, import, placement, Save or global settings.
 
-LOAD requires the executor's exact genuine human approval. It is non-atomic,
+LOAD requires an exact proposal dispatched by the executor. It is non-atomic,
 in memory only and can be partial/uncertain; it does not prove rollback or
 persistence. Use `pcb_library_load_status` to read/reconcile its exact outcome,
 never replay it. Even a complete load needs normal full `pcb_inspect`; complex
 geometry can still block placement. Native LOAD acceptance is pending.
-Portable writes are default-disabled; only the operator can opt in with genuine
-interactive input without auto-answer hooks. This role never enables writes.
+Portable LOAD/SAVE need no interactive opt-in. This role remains read-only and
+never dispatches a write; independent review is separate from execution.
 
 Challenge any omission of unverified-3D names or warnings from the snapshots
 and LOAD/Apply/SAVE descriptions. The optional operator staging flag

@@ -174,18 +174,23 @@ class AdvisoryTests(unittest.TestCase):
 
 
 class AgentProfileTests(unittest.TestCase):
-    def test_all_profiles_have_visual_tools_without_unrestricted_execution(self):
+    def test_all_profiles_have_visual_tools_with_executor_only_shell_access(self):
         root = Path(__file__).resolve().parents[1]
         profiles = list((root / ".github" / "agents").glob("pcb-*.agent.md"))
         self.assertEqual(len(profiles), 4)
         extra_tools = {
             "pcb-placement-planner.agent.md": {"pcb_prepare_placement", "pcb_plan_placement",
                                               "pcb_placement_status", "pcb_prepare_next_placement", "pcb_prepare_library_load"},
-            "pcb-layout-reviewer.agent.md": {"pcb_execution_status", "pcb_placement_status", "pcb_save_status"},
+            "pcb-layout-reviewer.agent.md": {"pcb_execution_status", "pcb_placement_status", "pcb_save_status",
+                                            "pcb_read_proposal"},
             "pcb-placement-executor.agent.md": {"pcb_apply_placement", "pcb_execution_status", "pcb_placement_status",
-                                               "pcb_prepare_save", "pcb_save_revision", "pcb_save_status", "pcb_load_libraries"},
+                                               "pcb_prepare_save", "pcb_save_revision", "pcb_save_status", "pcb_load_libraries",
+                                               "pcb_read_proposal", "execute", "edit", "agent",
+                                               "pcb_placement_intake", "pcb_prepare_placement", "pcb_plan_placement",
+                                               "pcb_prepare_next_placement", "pcb_prepare_library_load"},
             "pcb-placement-orchestrator.agent.md": {"agent", "todo", "pcb_execution_status", "pcb_plan_placement",
-                                                   "pcb_placement_status", "pcb_save_status"},
+                                                   "pcb_placement_status", "pcb_save_status",
+                                                   "pcb_placement_intake", "pcb_read_proposal"},
         }
         for profile in profiles:
             text = profile.read_text(encoding="utf-8")

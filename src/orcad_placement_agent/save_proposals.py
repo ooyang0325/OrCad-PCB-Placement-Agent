@@ -1,4 +1,4 @@
-"""Exact, separate, single-use approval for saving a managed board revision."""
+"""Exact, separate, single-use dispatch for saving a managed board revision."""
 
 from pathlib import Path
 import re
@@ -44,15 +44,15 @@ def load_save(session: Session, digest: str) -> dict[str, object]:
     return value
 
 
-def approve_save(session: Session, digest: str, confirmation: str) -> Receipt:
+def apply_save(session: Session, digest: str) -> Receipt:
     value = load_save(session, digest)
-    if confirmation != f"SAVE {digest}":
-        raise SessionError("Exact save approval was not supplied; no Save was sent.")
+    if any((session.root / f"save-{kind}-{digest}.json").exists() for kind in ("dispatch", "approval")):
+        raise SessionError("Save proposal was already dispatched; reconcile rather than replay.")
     if (session.root / value["destination"]).exists():
         raise SessionError("The new revision already exists; nothing was overwritten.")
     request_id = uuid.uuid4().hex
-    write_json(session.root / f"save-approval-{digest}.json", {
-        "proposal": digest, "request_id": request_id, "confirmation": confirmation,
+    write_json(session.root / f"save-dispatch-{digest}.json", {
+        "proposal": digest, "request_id": request_id,
     })
     return session.exchange(Request(session.nonce, request_id, "save", value["snapshot_id"],
                                     destination=value["destination"]))
@@ -60,21 +60,27 @@ def approve_save(session: Session, digest: str, confirmation: str) -> Receipt:
 
 def save_status(session: Session, digest: str) -> dict[str, object]:
     value = load_save(session, digest)
-    path = session.root / f"save-approval-{digest}.json"
+    path = session.root / f"save-dispatch-{digest}.json"
+    legacy = session.root / f"save-approval-{digest}.json"
+    if path.exists() and legacy.exists():
+        raise ProtocolError("Conflicting Save dispatch records; do not retry.")
+    if not path.exists():
+        path = legacy
     if not path.is_file():
-        return {"status": "not_dispatched", "message": "This revision has no consumed save approval."}
-    approval = session._read_json(path.name)
-    if (set(approval) != {"proposal", "request_id", "confirmation"}
-            or approval["proposal"] != digest or approval["confirmation"] != f"SAVE {digest}"):
-        raise ProtocolError("Save approval record does not match the proposal.")
-    request_id = identifier(approval["request_id"])
+        return {"status": "not_dispatched", "message": "This revision has not been dispatched."}
+    record = session._read_json(path.name)
+    fields = {"proposal", "request_id"} | ({"confirmation"} if path == legacy else set())
+    if (set(record) != fields or record.get("proposal") != digest
+            or (path == legacy and record.get("confirmation") != f"SAVE {digest}")):
+        raise ProtocolError("Save dispatch record does not match the proposal.")
+    request_id = identifier(record["request_id"])
     receipt_path = session.root / f"{request_id}.receipt.json"
     if receipt_path.is_file():
         receipt = Receipt.from_dict(session._read_json(receipt_path.name))
     elif (session.root / "pending.json").is_file():
         receipt = session.reconcile(expected_request_id=request_id, expected_operation="save")
     else:
-        return {"status": "indeterminate", "message": "Save approval was consumed but no terminal receipt is recorded. Do not resend."}
+        return {"status": "indeterminate", "message": "Save dispatch was consumed but no terminal receipt is recorded. Do not resend."}
     if receipt.nonce != session.nonce or receipt.request_id != request_id:
         raise ProtocolError("Save receipt belongs to another operation.")
     if receipt.status not in {"saved", "rejected"}:

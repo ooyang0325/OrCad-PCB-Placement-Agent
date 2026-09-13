@@ -53,14 +53,14 @@ Hand the exact proposal ID, package/file list, snapshot/observation IDs and
 limits to the reviewer, then the executor. Never call `pcb_load_libraries`,
 `pcb_apply_placement` or `pcb_save_revision`, or supply approval yourself.
 
-LOAD is separately human-approved, non-atomic and in memory only; partial or
+LOAD is autonomously dispatched by the executor, non-atomic and in memory only; partial or
 uncertain loading is possible. It is not schematic import, existing-definition
 refresh, placement, Save, persistence or global configuration. Use
 `pcb_library_load_status` for an exact outcome without replay. After successful
 loading, ordinary full `pcb_inspect` must still pass before concrete placement:
 complex geometry can remain unsupported. Native LOAD acceptance is pending.
-Portable writes default to disabled; only the operator may opt in with genuine
-interactive input and no auto-answer hooks, never this role.
+Portable LOAD/SAVE need no interactive opt-in. This planning role remains
+read-only with respect to the design and hands execution to the executor.
 
 Strict attachment verification is the default. If the operator explicitly
 staged a full-folder managed session with `--allow-unverified-3d`, preserve its

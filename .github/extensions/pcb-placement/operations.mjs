@@ -1,4 +1,4 @@
-// Model-visible actions contain no shell strings, paths, or save-approval answers.
+// Model-visible actions contain no shell strings, paths, or confirmation answers.
 const sessionProperty = {
     type: "string",
     pattern: "^board-[A-Za-z0-9_-]{1,64}$",
@@ -28,7 +28,7 @@ function requireFields(args, fields) {
     }
 }
 
-export function createPlacementTools({ run, requestInput, canPrompt, imageResult }) {
+export function createPlacementTools({ run, imageResult }) {
     function display(value) {
         return JSON.stringify(value, (key, item) => {
             if (key === "records" && Array.isArray(item)) {
@@ -98,6 +98,15 @@ export function createPlacementTools({ run, requestInput, canPrompt, imageResult
         tool("pcb_sessions",
             "List recorded managed PCB sessions and declared backend capabilities. Neither proves live readiness; do not select an unrelated session.",
             schema({}), "sessions", []),
+        tool("pcb_placement_intake",
+            "Inspect one exact attached managed session and route missing packages to library preparation or a supported board to planning. Returns a PNG on successful inspection; no loading, placement or approval.",
+            schema({ session: sessionProperty }), "intake", ["session"]),
+        tool("pcb_read_proposal",
+            "Read an exact placement, library or save proposal and its archived preparation PNG without native commands. Examine the actual image; fresh inspection and independent review remain separate.",
+            schema({
+                session: sessionProperty, proposal: proposalProperty,
+                kind: { type: "string", enum: ["placement", "library", "save"] },
+            }), "read-proposal", ["session", "proposal", "kind"]),
         tool("pcb_plan_placement",
             "Plan all required components from a fresh managed-board-v1 native inventory, explicit design requirements JSON, and actual PNG. Requires expected_refdes, clearance_mm and grid_mm; does not apply or approve.",
             schema({
@@ -155,49 +164,23 @@ export function createPlacementTools({ run, requestInput, canPrompt, imageResult
             }
         },
     });
-    function approvedTool(name, description, verb, describeAction, applyAction) {
+    function visualWriteTool(name, description, describeAction, applyAction) {
         return {
         name, description,
         parameters: schema({ session: sessionProperty, proposal: proposalProperty }),
         handler: async (args) => {
             try {
                 requireFields(args, ["session", "proposal"]);
-                if (!await canPrompt()) {
-                    return {
-                        resultType: "denied",
-                        textResultForLlm: JSON.stringify({
-                            status: "denied", dispatched: false,
-                            reason: "Writes need interactive mode and human UI support. Autopilot/unknown modes are refused; no native command was sent.",
-                        }),
-                    };
-                }
                 const description = await run({ action: describeAction, ...args });
                 if (description.status !== "prepared") return await render(description);
                 await imageResult(description.visual);
-                const expected = `${verb} ${args.proposal}`;
-                const answer = await requestInput(
-                    `${description.summary}\nBoard copy: ${description.working_board}\n` +
-                    `Visual observation: ${description.visual.observation_id}\n` +
-                    `${description.warning}\n\nType ${expected} to approve exactly this proposal. ` +
-                    "Cancel or leave blank to keep the board unchanged.",
-                    { title: `Exact ${verb} approval`, minLength: expected.length, maxLength: expected.length },
-                );
-                if (answer !== expected || !await canPrompt()) {
-                    return {
-                        resultType: "denied",
-                        textResultForLlm: JSON.stringify({
-                            status: "denied", dispatched: false,
-                            reason: "Exact approval was not supplied, or the session no longer permits interactive approval. Nothing was sent.",
-                        }),
-                    };
-                }
-                return await render(await run({ action: applyAction, ...args, confirmation: answer }));
+                return await render(await run({ action: applyAction, ...args }));
             } catch (error) {
                 return {
                     resultType: "failure",
                     textResultForLlm: JSON.stringify({
                         status: "error", error: error.message,
-                        warning: "Do not infer rollback or retry. Query this proposal's library/save status if approval was already submitted.",
+                        warning: "Do not infer rollback or retry. Query this proposal's library/save status if dispatch was attempted.",
                     }),
                 };
             }
@@ -215,9 +198,9 @@ export function createPlacementTools({ run, requestInput, canPrompt, imageResult
         "Read or reconcile one exact Save outcome without resending. A saved revision is distinct from reopen verification.",
         schema({ session: sessionProperty, proposal: proposalProperty }),
         "save-status", ["session", "proposal"]));
-    tools.push(approvedTool("pcb_save_revision",
-        "Request separate exact human SAVE approval and save one new revision. Never overwrite the source; no automatic reopen.",
-        "SAVE", "describe-save", "apply-save"));
+    tools.push(visualWriteTool("pcb_save_revision",
+        "Autonomously save one exact visually bound proposal as a new revision. Single-use dispatch; no source overwrite or automatic reopen.",
+        "describe-save", "apply-save"));
     tools.push(tool("pcb_inspect_libraries",
         "Inspect the bound library-setup inventory and actual PNG before package definitions are embedded. This is not full placement readiness.",
         schema({ session: sessionProperty }), "inspect-libraries", ["session"]));
@@ -228,8 +211,8 @@ export function createPlacementTools({ run, requestInput, canPrompt, imageResult
         "Read or reconcile the exact recorded library-load outcome without replaying it. Full board inspection is still required afterward.",
         schema({ session: sessionProperty, proposal: proposalProperty }),
         "library-status", ["session", "proposal"]));
-    tools.push(approvedTool("pcb_load_libraries",
-        "Request genuine human LOAD approval, then load exactly the reviewed staged package definitions. No placement, Save or global settings changes; never auto-approve or replay.",
-        "LOAD", "describe-libraries", "load-libraries"));
+    tools.push(visualWriteTool("pcb_load_libraries",
+        "Autonomously load one exact visually bound set of verified staged definitions. Single-use dispatch; no placement, Save or global settings changes.",
+        "describe-libraries", "load-libraries"));
     return tools;
 }

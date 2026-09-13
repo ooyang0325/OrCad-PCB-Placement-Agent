@@ -380,6 +380,84 @@ class ManagedBoardContractTests(unittest.TestCase):
         stackup = self.procedures["opaManagedStackup"]
         self.assertIn('!entry->layerType && entry->layerFunction == "SURFACE" && !entry->conductor', stackup)
 
+    def test_padstack_diagnostics_identify_each_rejection_without_relaxing_checks(self):
+        stacks = self.procedures["opaManagedPadstacks"]
+        checks = {
+            "duplicate-name": "!assoc(stack->name rows)",
+            "isThrough": "!stack->isThrough",
+            "holeType": 'member(stack->holeType \'("none" "circle_drill"))',
+            "drillDiameter": "stack->drillDiameter == 0.0",
+            "drillSizeWidth": "stack->drillSizeWidth == 0.0",
+            "drillSizeHeight": "stack->drillSizeHeight == 0.0",
+            "drillFigureName": 'member(stack->drillFigureName \'(nil "NULL"))',
+            "drillNonStandard": "!stack->drillNonStandard",
+            "actualHoleDiameter": "member(stack->actualHoleDiameter '(nil 0 0.0))",
+            "actualSlotWidth": "member(stack->actualSlotWidth '(nil 0 0.0))",
+            "actualSlotHeight": "member(stack->actualSlotHeight '(nil 0 0.0))",
+            "startEnd": 'equal(stack->startEnd \'("ETCH/TOP" "ETCH/TOP"))',
+            "pluralVia": "!stack->pluralVia",
+            "uvia": "!stack->uvia",
+            "isPadRef": "!stack->isPadRef",
+            "derived": "!stack->derived",
+            "multiDrillData": "!stack->multiDrillData",
+            "holeCounterType": "!stack->holeCounterType",
+            "backdrillDiameter": "!stack->backdrillDiameter",
+            "padSuppresion": "member(stack->padSuppresion '(nil t))",
+        }
+        for field, predicate in checks.items():
+            value = "stack->name" if field == "duplicate-name" else f"stack->{field}"
+            self.assertIn(f'list("{field}" {value} {predicate})', stacks)
+        self.assertIn("opaRequire(nth(2 check)", stacks)
+        self.assertIn("Padstack %s: unsupported %s=%L.", stacks)
+        self.assertIn("stack->name car(check) cadr(check)", stacks)
+        self.assertNotIn("Duplicate, drilled, derived or advanced padstack.", stacks)
+
+    def test_hole_free_smt_templates_use_physical_dimensions_not_only_type_label(self):
+        predicate = self.procedures["opaManagedSmtHoleFree"]
+        for guard in ('member(holeType \'("none" "circle_drill"))',
+                      "numberp(diameter) && diameter == 0.0",
+                      "numberp(slotWidth) && slotWidth == 0.0",
+                      "numberp(slotHeight) && slotHeight == 0.0"):
+            self.assertIn(guard, predicate)
+        stacks = self.procedures["opaManagedPadstacks"]
+        self.assertIn("opaManagedSmtHoleFree(stack->holeType stack->drillDiameter", stacks)
+        self.assertIn('list("isThrough" stack->isThrough !stack->isThrough)', stacks)
+        self.assertIn("stack->actualHoleDiameter stack->actualSlotWidth stack->actualSlotHeight", stacks)
+
+    def test_smt_pad_shapes_preserve_exact_boundary_and_corner_metadata(self):
+        style = self.procedures["opaManagedPadStyle"]
+        for shape in ("RECTANGLE", "SQUARE", "CIRCLE", "OBLONG_X", "OBLONG_Y",
+                      "ROUNDED_RECTANGLE", "CHAMFERED_RECTANGLE"):
+            self.assertIn(f'"{shape}"', style)
+        for unsupported in ("SHAPE", "FLASH", "DONUT", "OCTAGON"):
+            self.assertNotIn(f'"{unsupported}"', style)
+        self.assertIn("radius <= limit", style)
+        self.assertIn("opaStable(radius)", style)
+        self.assertIn('buildString(tokens "-") == corners', style)
+        self.assertIn("!member(token seen)", style)
+        pad = self.procedures["opaManagedPad"]
+        for guard in ("pad->type == \"REGULAR\"", "length(pad->figure) == 1",
+                      "!pad->figure", "opaLibraryPath(car(pad->figure) 0 budget)"):
+            self.assertIn(guard, pad)
+        self.assertIn("pad->flash pad->name pad->corners pad->radius pad->inside pad->sides", pad)
+        self.assertIn("boundary)", pad)
+        library = _procedures((ROOT / "skill" / "library_setup.il").read_text(encoding="ascii"))
+        boundary = library["opaLibraryPath"]
+        for required in ("axlPathSegGetArcCenter", "axlPathSegGetArcClockwise",
+                         "axlPathSegGetEndPoint", "axlPathSegGetWidth", "reverse(rows)"):
+            self.assertIn(required, boundary)
+        self.assertIn("equal(physicalPads expectedPads)", self.procedures["opaManagedComponent"])
+
+    def test_native_smt_pad_cases_are_pure_and_cover_rejected_geometry(self):
+        source = (ROOT / "tests" / "native" / "smt_pad_rules.il").read_text(encoding="ascii")
+        self.assertEqual(set(_procedures(source)), {"opaManagedSmtPadRulesAcceptance"})
+        self.assertNotRegex(_code_only(source), r"\b(?:axl\w+|load|system|eval|outfile)\(")
+        for case in ('"circle_drill" 0.7', '"oval slot"', '"rectangle slot"', '"SHAPE"', '"FLASH"',
+                     '"UR-UR"', '"UR-"', '"CIRCLE" 0.1', '"ROUNDED_RECTANGLE" -0.1',
+                     "0.25000001", "0.25000002"):
+            self.assertIn(case, source)
+        self.assertIn("errset(opaManagedPadStyle", source)
+
     def test_logical_function_mapping_checks_both_forward_and_reverse_ownership(self):
         functions = self.procedures["opaManagedFunctions"]
         for check in (

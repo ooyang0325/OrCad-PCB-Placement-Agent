@@ -1,4 +1,4 @@
-# Reference-grounded PCB advisory agents
+# Reference-grounded PCB agents
 
 Four repository-native Copilot profiles are provided:
 
@@ -7,14 +7,21 @@ Four repository-native Copilot profiles are provided:
 | `.github\agents\pcb-placement-orchestrator.agent.md` | Supervise intake, staged batches, routing-aware review and evidence-based completion across the three workers |
 | `.github\agents\pcb-placement-planner.agent.md` | Explain placement candidates, tradeoffs, evidence, and missing design inputs |
 | `.github\agents\pcb-layout-reviewer.agent.md` | Independently challenge a supplied plan and its citations |
-| `.github\agents\pcb-placement-executor.agent.md` | Autonomously apply an exact reviewed, visually grounded proposal and inspect the outcome; library LOAD and revision SAVE remain human-approved |
+| `.github\agents\pcb-placement-executor.agent.md` | Autonomously provision the native session, perform authorized PCB design/library/persistence work, and verify outcomes |
 
-All retain read/search access and add only their specific bounded PCB tools.
-Each can inspect the actual bound Cadence PNG; the planner can prepare a
-proposal, the reviewer can read execution status, and the executor can autonomously
-Apply an exact reviewed proposal, while LOAD and separate SAVE require human approval. The orchestrator alone has delegation/task-tracking
-access and is instructed to use only those three PCB roles. None has
-unrestricted shell/edit/web access. Delegation is not approval authority.
+All retain read/search and native inspection tools. The executor additionally
+has shell/edit access for startup, window selection, bootstrap/raw SKILL,
+library resolution, design operations and save/reopen within the assigned task.
+It may delegate to the planner and reviewer; the orchestrator coordinates all
+three roles. The planner and reviewer remain read-only with respect to design
+changes. In-scope work requires no per-operation human approval.
+
+Tool implementation and policy are separate: current MCP LOAD/SAVE now dispatch
+autonomously from exact proposals, but this does not establish native acceptance
+or add other native capabilities. Older installed runtimes need updating and
+restarting; never fabricate human UI responses to them. Missing
+sessions/fixtures should be provisioned by the executor before declaring a
+concrete external blocker. Preserve backups, native checks and recovery state.
 See [visual agent execution](agent-execution.md) for tool setup, image provenance,
 dispatch, and failure behavior. Tool restrictions depend on the Copilot host
 honoring the profiles; native/CLI checks remain independent.
@@ -66,19 +73,22 @@ the [orchestration contract](placement-orchestration.md). Supply the approved
 design/inventory, constraints, and exact session if available.
 The coordinator distinguishes blank, imported-unplaced, partial, and routed
 states. Use the [executable mission workflow](placement-missions.md) for
-complete target planning and fresh-readback progression. Initial placement
+complete target planning and fresh-readback progression. Typed initial placement
 requires the explicit managed-board model and supported embedded footprints.
-Missing packages can use [separate approved library setup](library-loading.md):
-the operator attaches a known all-unplaced managed-board-v1 session with
+Missing packages can use [typed library setup](library-loading.md):
+the executor attaches a known all-unplaced managed-board-v1 session with
 `--library-setup`; the planner inspects/prepares, the reviewer independently
-checks the actual PNG and exact package/file list, and the executor requests
-exact human LOAD. The coordinator delegates only these three roles.
+checks the actual PNG and exact package/file list, and the executor performs
+the authorized load. Legacy installed approval-gated runtimes need updating,
+not fabricated human input. The coordinator
+delegates only these three roles.
 LOAD is non-atomic and in memory only; it can be partial/uncertain and is not
 import, refresh, placement, Save, persistence or global configuration.
 Recover with `pcb_library_load_status` without replay. A successful load still
 requires normal full `pcb_inspect`; unsupported complex geometry remains a
-blocker. Native LOAD acceptance is pending. Unresolved import, library, geometry
-and routing gaps are not permission to improvise a backend.
+blocker. Native LOAD acceptance is pending. Delegate unresolved import, library,
+geometry and routing gaps to the executor for supported operations or validated
+implementation work within the task; never claim unavailable operations ran.
 
 ```powershell
 .\.venv\Scripts\python.exe -m orcad_placement_agent agent-context `

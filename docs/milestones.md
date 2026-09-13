@@ -19,7 +19,15 @@ These are development gates, not dates or GitHub milestones.
 | M12 | Nonrectangular outlines | Native line/arc contours and whole-footprint concave containment through mission/proposal/readback | Native contour checks and read-only howto outline extraction pass; unrelated full-board restrictions remain |
 | M13 | Preserved group/room constraints | Flat room/net groups, complete named Csets, immutable policy identity and explicit room matching | Implemented; native grouped-Cset reads pass on a separate saved copy; missing package definitions still block full attachment |
 | M14 | Complete project staging | Recursive design copy, explicit project root, library inventory, isolated controller and source-preservation checks | Implemented; copying is separate from native library loading and placement |
-| M15 | Separately approved library setup | All-unplaced managed-board-v1 setup binding, verified staged PSM/PAD/FSM/SSM cache, exact human LOAD and outcome recovery | Implemented in 0.9.0; native LOAD acceptance pending; full placement geometry and persistence remain separate |
+| M15 | Separate library setup | All-unplaced managed-board-v1 setup binding, verified staged PSM/PAD/FSM/SSM cache, exact autonomous LOAD and outcome recovery | Implemented in 0.9.0; approval gate removed; native LOAD acceptance pending; full placement geometry and persistence remain separate |
+| M16 | Continuous bounded mission handoffs | Read-only intake routing, exact archived proposal PNG retrieval, automatic supported worker transitions and precise native blockers | Implemented in 0.10.0 with extended hole-free SMT-pad readback; native end-to-end acceptance pending; editor setup and LOAD/SAVE remain separate |
+
+LOAD/SAVE runtime authorization gates have now been removed from MCP, the app
+extension and CLI. Exact proposals, visual binding, source protection, asset-lock
+continuity, single-use dispatch and legacy-record recovery remain enforced.
+Software tests cover both MCP protocol modes without elicitation; this does not
+establish native LOAD/SAVE or reopen acceptance. No native handler or board was
+changed by the authorization update.
 
 The environment doctor is an M0 prerequisite, not completion of M0.
 Read-only live access must be established before board-editing work begins.
@@ -74,9 +82,9 @@ M8 supplies a portable root manifest, a Claude-compatible adapter manifest,
 shared skills, two marketplace catalogs, and a local stdio MCP implementation.
 The Python installer does not modify client settings or execution policy.
 Portable placement writes autonomously dispatch exact visually bound proposals.
-Revision Save remains disabled by default because an MCP elicitation response
-does not establish human provenance. Actual client marketplace UIs and native
-write acceptance are not implied by package/SDK conformance.
+Revision Save and library LOAD now also dispatch autonomously. Actual client
+marketplace UIs and native write acceptance are not implied by package/SDK
+conformance.
 
 M9 adds supervision above the existing three workers. It must distinguish
 no logical design from zero physical placements, reject vacuous 0/0 completion,
@@ -89,14 +97,14 @@ blank-board mission executable. See [placement orchestration](placement-orchestr
 M15 adds a separate operator `attach --library-setup` binding for known logical
 inventory with no placed symbols. `pcb_inspect_libraries` and planner
 `pcb_prepare_library_load` provide actual PNG and verified staged-file evidence;
-only the executor requests exact human LOAD via `pcb_load_libraries`.
+only the executor dispatches exact LOAD via `pcb_load_libraries`.
 `pcb_library_load_status` reconciles an exact outcome without replay. Loading
 is non-atomic and in memory only, with partial/uncertain outcomes possible; it
 is not import, refresh of existing definitions, placement, Save, persistence or
 global configuration. A successful LOAD still requires ordinary full
-`pcb_inspect`, which can reject unsupported complex geometry. Portable writes
-remain default-disabled and require operator opt-in with genuine interactive
-input. Native LOAD validation is pending; implementation/tests do not establish
+`pcb_inspect`, which can reject unsupported complex geometry. Portable LOAD/SAVE
+need no opt-in or human elicitation. Native LOAD validation is pending;
+implementation/tests do not establish
 acceptance. See [library loading](library-loading.md).
 
 During M15 read-only setup on 2026-09-12, existing ACIS attachments up to

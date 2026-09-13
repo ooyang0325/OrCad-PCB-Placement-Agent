@@ -259,14 +259,14 @@ def pinned_library_bundle(session: Session, proposal: dict):
         yield
 
 
-def approve_libraries(session: Session, digest: str, confirmation: str) -> Receipt:
+def apply_libraries(session: Session, digest: str) -> Receipt:
     proposal = load_library_proposal(session, digest)
-    if confirmation != f"LOAD {digest}":
-        raise SessionError("Exact library-load approval was not supplied; nothing was sent.")
+    if any((session.root / f"library-{kind}-{digest}.json").exists() for kind in ("dispatch", "approval")):
+        raise SessionError("Library proposal was already dispatched; reconcile rather than replay.")
     with pinned_library_bundle(session, proposal):
         request_id = uuid.uuid4().hex
-        write_json(session.root / f"library-approval-{digest}.json",
-                   {"proposal": digest, "request_id": request_id, "confirmation": confirmation})
+        write_json(session.root / f"library-dispatch-{digest}.json",
+                   {"proposal": digest, "request_id": request_id})
         receipt = session.exchange(Request(session.nonce, request_id, "load_libraries",
                                            proposal["snapshot_id"], destination=f"library-{proposal['cache_id']}.csv"),
                                    timeout=60)
@@ -297,7 +297,7 @@ def _validate_outcome(session: Session, proposal: dict, request: str, receipt: R
     if (len(loaded) != len(set(loaded)) or len(missing) != len(set(missing))
             or set(loaded) & set(missing) or set(loaded) | set(missing) != requested
             or (receipt.status == "libraries_loaded") != (not missing)):
-        raise ProtocolError("Library outcome does not account for exactly the approved package set.")
+        raise ProtocolError("Library outcome does not account for exactly the proposed package set.")
     inventory = _inventory(receipt)
     before = setup_inventory(Receipt.from_dict(proposal["snapshot"]))
     if (Path(receipt.one("board")[1]).resolve() != session.working
@@ -308,16 +308,32 @@ def _validate_outcome(session: Session, proposal: dict, request: str, receipt: R
         raise ProtocolError("Library outcome disagrees with the actual native package inventory.")
 
 
+def library_dispatch_record(session: Session, digest: str) -> dict | None:
+    if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+        raise ProtocolError("Expected the exact library proposal identifier.")
+    path = session.root / f"library-dispatch-{digest}.json"
+    legacy = session.root / f"library-approval-{digest}.json"
+    if path.exists() and legacy.exists():
+        raise ProtocolError("Conflicting library dispatch records; do not retry.")
+    if not path.exists():
+        path = legacy
+    if not path.is_file():
+        return None
+    record = session._read_json(path.name)
+    fields = {"proposal", "request_id"} | ({"confirmation"} if path == legacy else set())
+    if (set(record) != fields or record.get("proposal") != digest
+            or (path == legacy and record.get("confirmation") != f"LOAD {digest}")):
+        raise ProtocolError("Library dispatch does not match its proposal.")
+    identifier(record.get("request_id"))
+    return record
+
+
 def library_status(session: Session, digest: str) -> dict:
     proposal = load_library_proposal(session, digest)
-    path = session.root / f"library-approval-{digest}.json"
-    if not path.is_file():
-        return {"status": "not_dispatched", "message": "This library plan has no consumed approval."}
-    approval = session._read_json(path.name)
-    if (set(approval) != {"proposal", "request_id", "confirmation"}
-            or approval.get("proposal") != digest or approval.get("confirmation") != f"LOAD {digest}"):
-        raise ProtocolError("Library approval does not match its proposal.")
-    request = identifier(approval.get("request_id"))
+    record = library_dispatch_record(session, digest)
+    if record is None:
+        return {"status": "not_dispatched", "message": "This library plan has not been dispatched."}
+    request = record["request_id"]
     receipt_path = session.root / f"{request}.receipt.json"
     if receipt_path.is_file():
         receipt = Receipt.from_dict(session._read_json(receipt_path.name))
@@ -331,14 +347,14 @@ def library_status(session: Session, digest: str) -> dict:
             if receipt.status != "indeterminate":
                 raise
     else:
-        return {"status": "indeterminate", "message": "Approval was consumed without a terminal outcome. Do not resend."}
+        return {"status": "indeterminate", "message": "Dispatch was consumed without a terminal outcome. Do not resend."}
     if receipt.nonce != session.nonce or receipt.request_id != request:
         raise ProtocolError("Receipt belongs to a different library-load request.")
     if receipt.status == "indeterminate":
         return {
             "status": "indeterminate", "native_status": receipt.status, "receipt": receipt.to_dict(),
             "requires_restaging": True, "placement_ready": False, "saved": False,
-            "message": "Native library preservation was not established. This approval cannot be replayed; writes remain blocked.",
+            "message": "Native library preservation was not established. This dispatch cannot be replayed; writes remain blocked.",
         }
     verified_path = session.root / f"library-verified-{digest}.json"
     if not verified_path.is_file():

@@ -19,9 +19,9 @@ From a trusted checkout, use an existing Python 3.12+ interpreter:
 This prepares a versioned environment and non-overwriting client snippets;
 it does not edit client settings or install/license Cadence. Marketplace
 bootstrapping additionally needs the Windows `py` launcher. Portable installs
-allow autonomous placement of exact visually bound proposals by default.
-Revision saves require deliberate operator configuration and genuine human
-input, never Autopilot or auto-answer hooks.
+allow autonomous placement, library loading and revision saves from exact
+visually bound proposals by default. No interactive approval or opt-in flag is
+required; native state, asset verification and single-use dispatch checks remain.
 
 Development is gated by the [milestones](docs/milestones.md). The synthetic
 fixture and native read-only bridge are working in PCB Editor 25.1 S050.
@@ -58,12 +58,19 @@ autonomously dispatch an exact visually bound proposal once.
 The controller sends bounded requests to a small SKILL adapter in a
 dedicated visible editor holding a disposable board copy. Every change will
 remain bound to its exact target pose and current board state. Apply and save
-remain separate operations; Save still requires explicit human approval.
+remain separate operations. Placement APPLY dispatches autonomously; library
+LOAD and revision SAVE now also dispatch autonomously from their own proposals.
 
-The controller sends bounded requests to a small SKILL adapter in a
-dedicated visible editor holding a disposable board copy. Every mutation
-requires its exact proposal and fresh board-state preconditions. Library LOAD,
-placement APPLY and revision SAVE are separately approved operations.
+Version 0.10.0 adds `pcb_placement_intake` to route an attached mission into
+missing-library preparation or full placement planning, and `pcb_read_proposal`
+to return an exact proposal's archived PNG directly to the reviewer/executor.
+The [continuous mission driver](docs/placement-orchestration.md#continuous-mission-driver)
+continues supported handoffs without asking the user to relay proposals or say
+"continue". Editor setup remains separate from these typed MCP operations.
+Unsupported native geometry and missing image capability remain blockers.
+The reader also recognizes zero-drill SMT templates and preserves complete
+oblong/rounded/chamfered SMT-pad boundaries. Drilled and slotted pad placement
+is still unsupported; native acceptance of the extended SMT variants is pending.
 
 Arbitrary production boards, raw schematic/netlist import, arbitrary library
 acquisition, routing, Presto, headless execution, remote access, and arbitrary
@@ -71,7 +78,7 @@ SKILL evaluation remain outside the supported native boundary.
 
 The experimental [placement mission workflow](docs/placement-missions.md)
 adds concrete all-component planning, native initial-placement handling and
-separate revision-save approval for explicitly staged `managed-board-v1`
+separate autonomous revision-save dispatch for explicitly staged `managed-board-v1`
 designs. It starts with a known imported logical inventory and embedded simple
 SMT footprints, including zero physically placed components. Native acceptance
 of this new model remains pending; Python/fake-editor tests are not that proof.
@@ -88,12 +95,12 @@ requiring users to delete them. Missing package definitions remain an explicit
 library-preparation blocker until separately resolved; group support does not
 silently import footprints.
 
-Version 0.9.0 adds [approved library setup](docs/library-loading.md) for
+Version 0.9.0 introduced [library setup](docs/library-loading.md) for
 all-unplaced `managed-board-v1` designs with known logical inventory.
 The operator uses `attach --library-setup`; `pcb_inspect_libraries` and
 `pcb_prepare_library_load` inspect and prepare exact missing definitions from
-a bounded, verified staged PSM/PAD/FSM/SSM cache. Only the executor requests
-the human's exact LOAD through `pcb_load_libraries`; recover with
+a bounded, verified staged PSM/PAD/FSM/SSM cache. The executor now dispatches
+the exact proposal through `pcb_load_libraries` without elicitation; recover with
 `pcb_library_load_status`, never a replay. Loading is non-atomic and in memory
 only: partial/uncertain outcomes are possible. It is not import, refresh of
 existing definitions, placement, Save, persistence or global configuration.
@@ -157,7 +164,7 @@ optional. To create one without starting Cadence or calling a model:
 If using a packet, give its printed path to the planner, then the same packet and its
 response to the reviewer. The executor can autonomously submit an exact visually
 grounded proposal through the [bounded execution workflow](docs/agent-execution.md).
-No implicit Save is performed; revision Save approval and the selected native
+No implicit Save is performed; exact Save proposals and the selected native
 model's limits remain.
 
 For a full mission, select **PCB placement orchestrator** or invoke the portable
