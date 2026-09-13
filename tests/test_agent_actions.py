@@ -132,6 +132,24 @@ class AgentActionTests(unittest.TestCase):
             })
         self.assertEqual(self.session.requests, [])
 
+    def test_fresh_proposal_review_returns_one_scene_bound_image_without_a_move(self):
+        prepared = self.prepare()
+        request = {"action": "review-proposal", "session": self.board.name,
+                   "kind": "placement", "proposal": prepared["proposal_sha256"]}
+        reviewed = self.service.dispatch(request)
+        self.assertEqual(reviewed["status"], "proposal_review_ready")
+        self.assertTrue(reviewed["scene_matches_proposal"])
+        self.assertEqual(reviewed["preparation_observation_id"], prepared["visual"]["observation_id"])
+        self.assertNotEqual(reviewed["visual"]["observation_id"], prepared["visual"]["observation_id"])
+        self.assertEqual(reviewed["freshness"], "fresh")
+        self.assertEqual(self.session.requests, [])
+        self.session.scene = "changed native scene"
+        blocked = self.service.dispatch(request)
+        self.assertEqual(blocked["status"], "blocked")
+        self.assertEqual(blocked["phase"], "proposal_scene_changed")
+        self.assertNotIn("scene_matches_proposal", blocked)
+        self.assertEqual(self.session.requests, [])
+
     def test_paths_unknown_fields_and_arbitrary_actions_are_rejected(self):
         for request in [
             {"action": "inspect", "session": "..\\board-fixture"},

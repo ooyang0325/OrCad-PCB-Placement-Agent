@@ -88,6 +88,12 @@ procedure(opaFixtureCheckBox(object box)
     )
 )
 
+procedure(opaFixtureWantsUnplaced(refdes)
+    when(boundp('opaFixtureInitialPlacement) && opaFixtureInitialPlacement
+        opaFixtureRequire(opaFixtureInitialPlacement == t "Invalid initial-placement fixture option")
+        member(refdes '("R1" "R2")))
+)
+
 procedure(opaFixtureVerify()
     let((design component symbol pin expected position child count
          shapes shape net branch object rule)
@@ -96,8 +102,8 @@ procedure(opaFixtureVerify()
         design = axlDBGetDesign()
         opaFixtureRequire(length(design->components) == 3
             "expected exactly three logical components")
-        opaFixtureRequire(length(design->symbols) == 3
-            "expected exactly three physical symbols")
+        opaFixtureRequire(length(design->symbols) == if(opaFixtureWantsUnplaced("R1") then 1 else 3)
+            "physical-symbol count differs from the chosen fixture variant")
         opaFixtureRequire(length(design->nets) == 2 "expected exactly two nets")
         opaFixtureRequire(equal(car(axlDBGetDesignUnits()) "millimeters")
             "database is not in millimeters")
@@ -131,6 +137,15 @@ procedure(opaFixtureVerify()
             expected = assoc(component->name
                 '(("R1" 10.0 10.0) ("R2" 20.0 10.0) ("R3" 30.0 10.0)))
             opaFixtureRequire(expected "unexpected component identifier")
+            if(opaFixtureWantsUnplaced(component->name) then
+                opaFixtureRequire(!component->symbol && length(component->pins) == 2
+                    "initial-placement fixture part unexpectedly instantiated")
+                foreach(pin component->pins
+                    opaFixtureRequire(!pin->definition &&
+                        ((pin->number == "1" && pin->net->name == "TEST_NET") ||
+                         (pin->number == "2" && pin->net->name == "TEST_RETURN"))
+                        "unplaced fixture connectivity differs from recipe"))
+            else
             symbol = opaFixtureRequire(component->symbol "component is unplaced")
             opaFixtureRequire(!axlDBIsReadOnly(symbol)
                 "native physical symbol is read-only")
@@ -164,7 +179,7 @@ procedure(opaFixtureVerify()
                     count = count + 1
                 )
             )
-            opaFixtureRequire(count == 1 "expected one explicit top place bound")
+            opaFixtureRequire(count == 1 "expected one explicit top place bound"))
         )
         t
     )
@@ -193,18 +208,21 @@ procedure(opaFixtureReceipt()
                 fprintf(output "design_attributes %L\n" design->?)
                 foreach(component design->components
                     symbol = component->symbol
-                    fprintf(output "component %L package %L xy %L rotation %L mirrored %L fixed %L\n"
-                        component->name component->package symbol->xy
-                        symbol->rotation symbol->isMirrored
-                        if(axlDBIsFixed(symbol) then t else nil))
+                    if(symbol then
+                        fprintf(output "component %L package %L xy %L rotation %L mirrored %L fixed %L\n"
+                            component->name component->package symbol->xy
+                            symbol->rotation symbol->isMirrored
+                            if(axlDBIsFixed(symbol) then t else nil))
+                    else fprintf(output "component %L package %L UNPLACED\n" component->name component->package))
                     fprintf(output "component_attributes %L\n" component->?)
-                    fprintf(output "symbol_attributes %L\n" symbol->?)
-                    fprintf(output "symbol_read_only %L\n" axlDBIsReadOnly(symbol))
+                    when(symbol
+                        fprintf(output "symbol_attributes %L\n" symbol->?)
+                        fprintf(output "symbol_read_only %L\n" axlDBIsReadOnly(symbol)))
                     foreach(pin component->pins
                         fprintf(output "pin %L %L net %L xy %L padstack %L\n"
                             component->name pin->number pin->net->name pin->xy pin->name)
                     )
-                    foreach(child symbol->children
+                    foreach(child if(symbol then symbol->children else nil)
                         fprintf(output "symbol_child %L type %L layer %L bbox %L\n"
                             component->name child->objType child->layer child->bBox)
                     )
@@ -236,7 +254,7 @@ procedure(opaFixtureReceipt()
 
 procedure(opaFixtureCreate()
     let((source working receipt device mark committed pad definition bounds
-         entry component symbol pin rule oldDevpath)
+         entry component symbol pin rule oldDevpath padName drill pads)
         source = opaFixturePath("source.brd")
         working = opaFixturePath("working.brd")
         receipt = opaFixturePath("fixture-receipt.txt")
@@ -260,16 +278,25 @@ procedure(opaFixtureCreate()
                     "BOARD GEOMETRY/OUTLINE" nil)
                 opaFixtureRectangle(list(1:1 39:29) nil "PACKAGE KEEPIN/ALL" nil)
                 opaFixtureRectangle(list(24:18 30:24) t "PACKAGE KEEPOUT/TOP" nil)
-                pad = opaFixtureRequire(axlDBCreatePadStack("OPA_FIXTURE_SMD" nil
-                    list(make_axlPadStackPad(?layer "TOP" ?type 'REGULAR
-                        ?figure 'RECTANGLE ?figureSize 0.8:1.0)))
+                padName = "OPA_FIXTURE_SMD"
+                drill = nil
+                pads = list(make_axlPadStackPad(?layer "TOP" ?type 'REGULAR
+                    ?figure 'RECTANGLE ?figureSize 0.8:1.0))
+                when(boundp('opaFixtureThroughPads) && opaFixtureThroughPads
+                    opaFixtureRequire(opaFixtureThroughPads == t "Invalid through-pad fixture option.")
+                    padName = "OPA_FIXTURE_THROUGH"
+                    drill = make_axlPadStackDrill(?holeType 'CIRCLE_DRILL ?drillDiameter 0.4
+                        ?plating 'PLATED)
+                    pads = append(pads list(make_axlPadStackPad(?layer "BOTTOM" ?type 'REGULAR
+                        ?figure 'RECTANGLE ?figureSize 0.8:1.0))))
+                pad = opaFixtureRequire(axlDBCreatePadStack(padName drill pads)
                     "cannot create original embedded SMT padstack")
                 definition = opaFixtureRequire(axlDBCreateSymDefSkeleton(
                     '("OPA_FIXTURE_TWO_PIN" "PACKAGE") list(-2:-1 2:1)
                     list(
-                        make_axlPinData(?number "1" ?padstack "OPA_FIXTURE_SMD"
+                        make_axlPinData(?number "1" ?padstack padName
                             ?origin -1.2:0 ?rotation 0.0)
-                        make_axlPinData(?number "2" ?padstack "OPA_FIXTURE_SMD"
+                        make_axlPinData(?number "2" ?padstack padName
                             ?origin 1.2:0 ?rotation 0.0)))
                     "cannot create original embedded two-pin definition")
                 bounds = opaFixtureRectangle(list(-2:-1 2:1) t
@@ -284,9 +311,11 @@ procedure(opaFixtureCreate()
                     component = opaFixtureRequire(axlDBCreateComponent(
                         car(entry) "opa_fixture_device" "OPA_FIXTURE_TWO_PIN")
                         "cannot create logical component")
-                    symbol = car(opaFixtureRequire(axlDBCreateSymbol(
-                        car(entry) list(cadr(entry) caddr(entry)) nil 0.0)
-                        "cannot place physical symbol"))
+                    symbol = nil
+                    unless(opaFixtureWantsUnplaced(car(entry))
+                        symbol = car(opaFixtureRequire(axlDBCreateSymbol(
+                            car(entry) list(cadr(entry) caddr(entry)) nil 0.0)
+                            "cannot place physical symbol")))
                     foreach(pin component->pins
                         opaFixtureRequire(axlDBAssignNet(pin
                             if(equal(pin->number "1")

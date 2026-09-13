@@ -164,6 +164,16 @@ def create_server(
         return result(dispatch({"action": "read-proposal", "session": session, "proposal": proposal, "kind": kind}))
 
     @server.tool(annotations=READ_ONLY)
+    def pcb_review_proposal(
+        session: SessionName, proposal: ProposalID, kind: Literal["placement", "library", "save"],
+    ) -> CallToolResult:
+        """Return one fresh PNG, gated by exact equality with the prepared proposal's native scene.
+
+        The reviewer must inspect actual pixels and the proposed change. No native mutation or approval.
+        """
+        return result(dispatch({"action": "review-proposal", "session": session, "proposal": proposal, "kind": kind}))
+
+    @server.tool(annotations=READ_ONLY)
     def pcb_inspect_libraries(session: SessionName) -> CallToolResult:
         """Read library-setup inventory and actual PNG before package definitions exist; not placement readiness."""
         return result(dispatch({"action": "inspect-libraries", "session": session}))

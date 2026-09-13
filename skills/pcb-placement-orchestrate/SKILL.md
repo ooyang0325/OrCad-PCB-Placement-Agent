@@ -38,7 +38,8 @@ Serialize native access and hand off one bounded proposal with complete context.
 If an independent worker cannot view pixels because of a host image limit,
 report that capability failure; do not repeatedly send images or substitute the
 coordinator's image review. Rejected, partial, rolled-back or indeterminate
-results stop the affected batch. Reconcile exact status, never replay.
+results enter validation recovery rather than ending the mission. Pause only
+dependent mutations, reconcile exact status and never replay.
 Mission `execution_reconciliation` and `execution_rejected` results carry exact
 dispatch evidence, not fresh coverage. Resolve unknown outcomes through the
 specified status tool and send terminal failures to the planner/reviewer;
@@ -47,6 +48,29 @@ For a native model blocker, report phase/session/proposal/request and the exact
 object/feature message. Unsupported features need validated implementation work,
 delegated to the executor when development is requested. Do not disable checks
 or remove protected design data to force acceptance.
+
+### Validation recovery
+
+A validation failure is a recovery step, not a reason to end the turn. Give a
+brief non-blocking progress update and immediately delegate diagnosis, repair
+and a focused recheck. A failed worker result is an internal recovery handoff,
+not a reason to ask the user to say "continue" or relay results.
+
+Have the executor fix software/setup issues and the planner/reviewer revise
+invalid targets using the exact diagnostics. For uncertain native outcomes,
+reconcile the exact operation first; pause only dependent mutations and
+continue read-only diagnosis or work independent of that state. After verified
+rejection or rollback, resolve the cause and prepare a fresh reviewed proposal.
+Never replay a consumed proposal. Do not disable validation, weaken checks,
+clear pending state or mark a failed check as passed.
+
+Every retry needs a correction, new evidence or a verified transient cause.
+Change approach or escalate internally when progress stalls instead of repeating
+identical attempts. Resume the mission automatically once checks pass and state
+is reconciled. Return a final blocker only after in-scope recovery is exhausted
+and missing intent, target ambiguity, scope changes or external prerequisites
+genuinely need user action.
+Never claim completion while required validation remains failed or unverified.
 
 ## Authority and capability inventory
 
@@ -210,9 +234,12 @@ operations do not advance coverage. Successful LOAD does not place anything.
 Use `pcb_execution_status`, `pcb_library_load_status`, `pcb_save_status` and the
 exact `pcb_inspection_status` request for the corresponding uncertainty;
 never replay a move, LOAD or SAVE.
-Bound revision loops and escalate incompatible requirements.
-Default to one component in the first executable batch and at most three
-planner/reviewer revision cycles per batch before escalation.
+Default to one component in the first executable batch. After three
+identical-strategy revision cycles, change the diagnostic approach or escalate
+internally. A retry budget alone does not end the task or require user input;
+further attempts must add evidence or a correction. Escalate genuinely
+incompatible design requirements to the user only when autonomous resolution
+would change their intent or scope.
 
 Finish with placement coverage, unresolved items, routing-review evidence,
 explicit routing-verification limits, images and save state. Otherwise report

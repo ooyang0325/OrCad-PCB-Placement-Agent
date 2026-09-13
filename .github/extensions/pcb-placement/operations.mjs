@@ -107,6 +107,12 @@ export function createPlacementTools({ run, imageResult }) {
                 session: sessionProperty, proposal: proposalProperty,
                 kind: { type: "string", enum: ["placement", "library", "save"] },
             }), "read-proposal", ["session", "proposal", "kind"]),
+        tool("pcb_review_proposal",
+            "Return one fresh PNG and exact proposal data only when the native scene still equals the prepared scene. Independent visual review is required; no placement, loading, saving or approval.",
+            schema({
+                session: sessionProperty, proposal: proposalProperty,
+                kind: { type: "string", enum: ["placement", "library", "save"] },
+            }), "review-proposal", ["session", "proposal", "kind"]),
         tool("pcb_plan_placement",
             "Plan all required components from a fresh managed-board-v1 native inventory, explicit design requirements JSON, and actual PNG. Requires expected_refdes, clearance_mm and grid_mm; does not apply or approve.",
             schema({

@@ -120,6 +120,40 @@ class OrchestrationContractTests(unittest.TestCase):
             else:
                 self.assertTrue({"execute", "edit"} <= set(tools))
 
+    def test_validation_failures_continue_internal_recovery_without_weakening_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        paths = (
+            root / ".github" / "agents" / "pcb-placement-executor.agent.md",
+            root / ".github" / "agents" / "pcb-placement-orchestrator.agent.md",
+            root / "skills" / "pcb-placement-execute" / "SKILL.md",
+            root / "skills" / "pcb-placement-orchestrate" / "SKILL.md",
+        )
+        for path in paths:
+            text = " ".join(path.read_text(encoding="utf-8").split())
+            with self.subTest(profile=path.relative_to(root)):
+                for requirement in (
+                    "Validation recovery",
+                    "A validation failure is a recovery step, not a reason to end the turn",
+                    "non-blocking progress update", "focused", "reconcile the exact",
+                    "pause only dependent mutations", "Never replay a consumed proposal",
+                    "disable validation, weaken checks, clear pending state",
+                    "mark a failed check as passed", "Every retry needs a correction, new evidence",
+                    "Resume the mission automatically",
+                    "Never claim completion while required validation remains failed or unverified",
+                ):
+                    self.assertIn(requirement, text)
+                self.assertNotIn("outcomes halt the affected batch", text)
+                self.assertNotIn("results stop the affected batch", text)
+                self.assertNotIn("revision cycles per batch before escalation", text)
+                self.assertNotIn("If image understanding is unavailable, stop", text)
+        instructions = " ".join((root / ".github" / "copilot-instructions.md").read_text(encoding="utf-8").split())
+        for requirement in (
+            "A validation failure is a recovery step, not a reason to end the turn",
+            "non-blocking progress update", "pause only dependent mutations",
+            "Each retry needs a correction, new evidence", "in-scope recovery is exhausted",
+        ):
+            self.assertIn(requirement, instructions)
+
     def test_executor_can_provision_and_execute_with_recovery(self):
         root = Path(__file__).resolve().parents[1]
         text = (root / ".github" / "agents" / "pcb-placement-executor.agent.md").read_text(encoding="utf-8")

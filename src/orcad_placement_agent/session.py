@@ -220,7 +220,7 @@ class Session:
             raise SessionError("Invalid editor executable/title.")
         return EditorWindow(**value)
 
-    def bind(self, editor: EditorWindow, timeout: float = 30.0, *, library_setup: bool = False) -> Receipt:
+    def bind(self, editor: EditorWindow, timeout: float = 60.0, *, library_setup: bool = False) -> Receipt:
         if (self.root / "editor.json").exists():
             raise SessionError("This session is already bound; stage a fresh session to retarget.")
         if library_setup and (self.model != "managed-board-v1" or self.design_copy is None):
@@ -247,7 +247,7 @@ class Session:
 
     def exchange(
         self, request: Request, editor: EditorWindow | None = None,
-        timeout: float = 30.0,
+        timeout: float = 60.0,
     ) -> Receipt:
         if not 0 < timeout <= 60:
             raise SessionError("Receipt timeout must be greater than 0 and at most 60 seconds.")

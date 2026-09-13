@@ -21,6 +21,7 @@ These are development gates, not dates or GitHub milestones.
 | M14 | Complete project staging | Recursive design copy, explicit project root, library inventory, isolated controller and source-preservation checks | Implemented; copying is separate from native library loading and placement |
 | M15 | Separate library setup | All-unplaced managed-board-v1 setup binding, verified staged PSM/PAD/FSM/SSM cache, exact autonomous LOAD and outcome recovery | Implemented in 0.9.0; approval gate removed; native LOAD acceptance pending; full placement geometry and persistence remain separate |
 | M16 | Continuous bounded mission handoffs | Read-only intake routing, exact archived proposal PNG retrieval, automatic supported worker transitions and precise native blockers | Implemented in 0.10.0 with extended hole-free SMT-pad readback; native end-to-end acceptance pending; editor setup and LOAD/SAVE remain separate |
+| M17 | Mixed-pad native readback and fine-grid planning | Full-span drills/slots, preserved labels/arcs, pin-local pad comparison and bounded grid-contact search | 0.11.0: 21 native padstacks and 46-component full intake/plan pass; native placement/rollback remains pending |
 
 LOAD/SAVE runtime authorization gates have now been removed from MCP, the app
 extension and CLI. Exact proposals, visual binding, source protection, asset-lock

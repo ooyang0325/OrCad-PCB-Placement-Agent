@@ -9,7 +9,7 @@ def backend_capabilities() -> dict[str, object]:
         "implementation_version": __version__,
         "declaration_only": True,
         "runtime_readiness": "Must be established by inspection of the exact managed session.",
-        "native_scope": "fixture_or_managed_unrouted_smt",
+        "native_scope": "fixture_or_managed_unrouted_smt_and_through",
         "default_native_model": "fixture",
         "native_models": ["fixture", "managed-board-v1"],
         "native_acceptance": "Managed-board initial placement and mutations require dedicated live acceptance; not established by unit tests.",
@@ -38,7 +38,11 @@ def backend_capabilities() -> dict[str, object]:
             "RECTANGLE", "SQUARE", "CIRCLE", "OBLONG_X", "OBLONG_Y",
             "ROUNDED_RECTANGLE", "CHAMFERED_RECTANGLE",
         ],
-        "smt_pad_geometry": "Top-side regular and mask pads with a complete native boundary, corner metadata and hole-free dimensions; drilled/slot and external SHAPE/FLASH pads remain unsupported. Native acceptance of extended SMT variants is pending.",
+        "through_hole_padstacks": True,
+        "through_hole_scope": "Full TOP-to-BOTTOM round/square drills and oval/rectangular slots with complete padstack signatures, bounded drill envelopes and explicit pin-span matching. No blind/buried, derived, microvia, multidrill, backdrill or counterbore.",
+        "smt_pad_geometry": "Complete native pad boundaries, offsets and corner metadata; embedded SHAPE/FLASH support is preserved and resolved explicitly. Native movement/rollback acceptance is separate from successful readback.",
+        "package_labels_and_arcs": True,
+        "fine_grid_candidate_sampling": True,
         "arbitrary_board_writes": False,
         "route_generation": False,
         "routing_feasibility_verification": False,
@@ -54,9 +58,10 @@ def backend_capabilities() -> dict[str, object]:
         "library_human_approval_required": False,
         "initial_placement_requirements": (
             "Explicit managed-board-v1 staging; nonempty imported logical inventory and embedded simple "
-            "top-side SMT footprints; simple closed outline/keepin contours and rectangular keepouts; "
+            "top-side SMT/through-hole footprints; simple closed outline/keepin contours and rectangular keepouts; "
             "millimeters/4/10000; named physical/spacing/same-net Csets and positive planes supported. "
-            "No routing, package/unattached text, unmapped logical functions, nested/component groups, "
+            "Reference/pin labels and non-copper line/arc package graphics are preserved. "
+            "No routing, free/unmapped text, unmapped logical functions, nested/component groups, "
             "advanced pads, electrical Csets or class/region constraint overrides. "
             "Native attachments must be readable within the bounded exported-byte model, except explicitly opted-in metadata-only embedded 3D attachments. "
             "Missing definitions require the separate library-setup workflow; raw empty-design import remains an intake blocker. "

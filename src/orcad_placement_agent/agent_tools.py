@@ -250,6 +250,7 @@ class AgentActions:
         allowed = {
             "intake": {"action", "session"},
             "read-proposal": {"action", "session", "proposal", "kind"},
+            "review-proposal": {"action", "session", "proposal", "kind"},
             "inspect": {"action", "session"},
             "prepare": {"action", "session", "refdes", "x", "y", "angle"},
             "describe": {"action", "session", "proposal"},
@@ -276,11 +277,28 @@ class AgentActions:
         session = self.session(request["session"])
         if action == "intake":
             return self.intake(session)
-        if action == "read-proposal":
+        if action in {"read-proposal", "review-proposal"}:
             readers = {"placement": self.describe, "library": self.describe_libraries, "save": self.describe_save}
             if request["kind"] not in readers:
                 raise AgentActionError("Proposal kind must be placement, library, or save.")
-            return {"status": "proposal_evidence", **readers[request["kind"]](session, request["proposal"]),
+            description = readers[request["kind"]](session, request["proposal"])
+            if action == "review-proposal":
+                expected = self.snapshot(session, description["visual"])
+                observation = self.observation(session, library_setup=request["kind"] == "library")
+                current = self.snapshot(session, observation)
+                if current.one("board") != expected.one("board") or current.scene != expected.scene:
+                    return {"status": "blocked", "phase": "proposal_scene_changed",
+                            "session": session.root.name, "proposal": request["proposal"],
+                            "visual": observation,
+                            "error": "Fresh native scene differs from the prepared proposal; no review readiness or dispatch."}
+                return {**description, "status": "proposal_review_ready", "kind": request["kind"],
+                        "freshness": "fresh", "visual": observation,
+                        "preparation_observation_id": description["visual"]["observation_id"],
+                        "preparation_snapshot_id": expected.one("snapshot")[1],
+                        "snapshot_id": current.one("snapshot")[1], "scene_matches_proposal": True,
+                        "message": "This single fresh PNG depicts native state identical to the exact proposal's "
+                                   "prepared scene. Review its pixels and exact target; no move or approval occurred."}
+            return {"status": "proposal_evidence", **description,
                     "kind": request["kind"], "freshness": "archived",
                     "message": "Exact preparation PNG and bound native evidence only; no native command or approval. "
                                "Inspect fresh state separately. Missing pixels or host image limits are review blockers."}

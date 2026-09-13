@@ -82,6 +82,35 @@ def world_box(part, pose):
 
 
 class MissionTests(unittest.TestCase):
+    def test_fine_grid_sampling_remains_on_exact_grid_and_validates_complete_targets(self):
+        board = snapshot([component(f"U{i}") for i in range(1, 13)], outline=("0", "0", "20", "20"))
+        req = requirements(board, grid_mm="0.1", clearance_mm="0.127",
+                           limits={"max_candidates": 1000000, "max_seconds": 30})
+        plan = plan_mission(board, req)
+        self.assertEqual(plan["status"], "ready")
+        self.assertEqual(len(plan["targets"]), 12)
+        self.assertFalse(plan["evidence"]["search"]["domain_complete"])
+        self.assertEqual(plan["evidence"]["search"]["domain_sampling"],
+                         "coarse-seeds-plus-grid-snapped-obstacle-contacts")
+        self.assert_legal(board, req, plan["targets"])
+        for target in plan["targets"]:
+            for axis in ("x", "y"):
+                self.assertEqual(Decimal(target[axis]) % Decimal("0.1"), 0)
+        self.assertEqual(plan["targets"], plan_mission(board, req)["targets"])
+
+    def test_3d_exception_disclosures_survive_planning_and_bind_mission_identity(self):
+        board = snapshot()
+        board["unverified_3d_attachments"] = ["3D:part.step/ACIS"]
+        plan = plan_mission(board, requirements(board))
+        self.assertEqual(plan["status"], "ready")
+        self.assertEqual(plan["baseline"]["unverified_3d_attachments"], board["unverified_3d_attachments"])
+        changed = fresh(board)
+        changed["unverified_3d_attachments"] = ["3D:different.step/ACIS"]
+        self.assertEqual(mission_status(changed, plan)["status"], "blocked")
+        for names in ([], ["unrelated"], ["3D:/ACIS"], ["3D:part.step/ACIS"] * 2):
+            with self.subTest(names=names), self.assertRaises(MissionError):
+                plan_mission({**board, "unverified_3d_attachments": names}, requirements(board))
+
     def assert_legal(self, board, req, targets):
         parts = {part["refdes"]: part for part in board["components"]}
         clearance = Decimal(req["clearance_mm"])

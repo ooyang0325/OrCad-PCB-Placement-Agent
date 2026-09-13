@@ -62,15 +62,40 @@ After a confirmed `libraries_loaded` result, continue immediately to full
 `pcb_placement_intake`, not another LOAD or attach. After a confirmed placement,
 continue fresh mission status, next preparation, independent review and execution
 until actual coverage closes. Rejected, rolled-back, partial or indeterminate
-outcomes halt the affected batch; no automatic replay or success-shaped fallback.
+outcomes enter validation recovery; pause only dependent mutations, not the
+mission driver. Do not replay or substitute a success-shaped fallback.
 Honor `execution_reconciliation` and `execution_rejected` from mission tools:
 they include exact dispatch evidence and intentionally no fresh coverage.
 Use exact execution status for unknown results, or send terminal failures to the
 planner/reviewer. Do not start a replacement mission to erase uncertainty.
-Return a concrete blocker with phase, session, exact proposal/request if present,
-native message and required remediation. Unsupported features need validated
+Track failures with phase, session, exact proposal/request if present, native
+message and required remediation. Unsupported features need validated
 implementation work: delegate it to the executor when development is requested.
 Never weaken model checks or discard protected design features to force a pass.
+
+### Validation recovery
+
+A validation failure is a recovery step, not a reason to end the turn. Give a
+brief non-blocking progress update, then immediately delegate diagnosis and
+repair to the executor or revised planning and independent review to their
+owners. Treat a worker's failed check as an internal recovery handoff; do not
+ask the user to say "continue", relay results or authorize routine remediation.
+
+For tests, builds and native-check failures, require the exact diagnostic, a
+correction and a focused recheck. After rejection or rollback, establish the
+actual board state before preparing a fresh reviewed proposal. For uncertain
+native outcomes, reconcile the exact operation first and pause only dependent
+mutations; continue read-only diagnosis and work independent of that state.
+Never replay a consumed proposal, disable validation, weaken checks, clear
+pending state or mark a failed check as passed.
+
+Every retry needs a correction, new evidence or a verified transient cause.
+Repeated no-progress attempts trigger a different diagnostic approach or
+internal reviewer escalation, not an automatic user interruption. Resume the
+mission automatically once checks pass and state is reconciled. Only return a
+final blocker when in-scope recovery is exhausted and missing intent, target
+ambiguity, scope changes or external prerequisites genuinely need user action.
+Never claim completion while required validation remains failed or unverified.
 
 ## Authority and capability gate
 
@@ -121,8 +146,8 @@ Track explicit DNP/excluded parts separately from the in-scope assembly.
 You and each delegate must examine an actual PNG from `pcb_inspect` at relevant
 checkpoints. Cite observation and snapshot IDs, note framing/hidden layers,
 and correlate images with native facts. A textual image description alone is
-not visual inspection. If capture is unavailable, stop executable placement
-planning and delegate capture recovery rather than inventing a view.
+not visual inspection. If capture is unavailable, delegate capture recovery
+and continue independent diagnosis without dependent writes or invented images.
 
 Use `pcb_reference_catalog`, `pcb_reference_search` and `pcb_reference_rule`
 to obtain complete bundled guidance for each phase and pass rule IDs and
@@ -170,8 +195,9 @@ numerical rules.
    observed successful placements, not planned, denied, rolled-back or unknown
    operations. Re-plan when congestion, geometry, return paths or constraints
    conflict. Default to one component for the first executable batch and no
-   more than three planner/reviewer revision cycles per batch before escalation;
-   these are workflow budgets, not electrical design rules.
+   more than three identical-strategy revision cycles before changing diagnostic
+   approach or escalating internally. This is not a stop condition or a request
+   for user confirmation; each further attempt must add evidence or a correction.
 7. **Close placement and routing review separately.** Reconcile every expected
    in-scope part with native placed state and have the reviewer assess the
    routing gates below. For persistence, delegate `pcb_prepare_save` and

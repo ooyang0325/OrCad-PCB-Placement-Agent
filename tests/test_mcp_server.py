@@ -78,7 +78,7 @@ class MCPServerTests(unittest.IsolatedAsyncioTestCase):
                 "pcb_plan_placement", "pcb_placement_status", "pcb_prepare_next_placement",
                 "pcb_prepare_save", "pcb_save_revision", "pcb_save_status",
                 "pcb_inspect_libraries", "pcb_prepare_library_load", "pcb_load_libraries", "pcb_library_load_status",
-                "pcb_placement_intake", "pcb_read_proposal",
+                "pcb_placement_intake", "pcb_read_proposal", "pcb_review_proposal",
             })
             apply = next(tool for tool in tools if tool.name == "pcb_apply_placement")
             self.assertEqual(set(apply.input_schema["properties"]), {"session", "proposal"})
@@ -100,6 +100,8 @@ class MCPServerTests(unittest.IsolatedAsyncioTestCase):
                 ("pcb_placement_intake", {"session": "board-fixture"}, "intake"),
                 ("pcb_read_proposal", {"session": "board-fixture", "proposal": PROPOSAL, "kind": "library"},
                  "read-proposal"),
+                ("pcb_review_proposal", {"session": "board-fixture", "proposal": PROPOSAL, "kind": "placement"},
+                 "review-proposal"),
             ):
                 self.assertTrue(tools[name].annotations.read_only_hint)
                 response = await client.call_tool(name, arguments)
@@ -253,7 +255,7 @@ class MCPServerTests(unittest.IsolatedAsyncioTestCase):
             cwd=self.temp.name, env=environment,
         )
         async with Client(parameters, mode="legacy", read_timeout_seconds=15) as client:
-            self.assertEqual(len((await client.list_tools()).tools), 22)
+            self.assertEqual(len((await client.list_tools()).tools), 23)
             result = await client.call_tool("pcb_reference_catalog", {})
             self.assertFalse(result.is_error)
             self.assertEqual(result.structured_content["data"]["bundled"]["card_count"], 36)

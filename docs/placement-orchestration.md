@@ -45,8 +45,8 @@ windows, load libraries, prepare placements or save:
 | `setup_required` / `library_preparation` | Inspect the returned setup PNG, delegate preparation, independent review and executor LOAD handoff |
 | `intake_ready` / `placement_planning` | Inspect the PNG and native inventory, reconcile assembly/DNP and explicit grid/clearance, then plan |
 | `blocked` / `reconciliation_required` | Reconcile the exact pending request using its appropriate status tool; do not replay |
-| `blocked` / `attachment_required` | Report the operator's staging/attachment prerequisite; never pick an unrelated window |
-| Other `blocked` results | Report the native message and phase; do not repeat LOAD or alter unsupported geometry |
+| `blocked` / `attachment_required` | Delegate staging/attachment recovery to the executor and resume intake after verification; never pick an unrelated window |
+| Other `blocked` results | Keep the native message and phase, delegate in-scope diagnosis/repair and recheck; do not repeat LOAD or remove geometry to evade checks |
 
 Only a definite missing-package rejection routes to a setup inspection. A
 timeout, source change, absent PNG, or padstack rejection does not trigger a
@@ -68,6 +68,24 @@ Real external blockers and explicit prepare-only scope are stop conditions,
 not routine "continue" prompts. LOAD/SAVE need no per-operation approval.
 This is bounded automation, not a self-modifying controller: unsupported native
 features require diagnosed, tested implementation changes and native acceptance.
+
+### Validation recovery
+
+A failed validation does not end the agent's turn or require the user to say
+"continue". Give a non-blocking progress update, retain the failing diagnostic,
+repair the cause within scope and rerun the focused check. Worker failures go
+back to the coordinator as recovery handoffs with evidence and a next action.
+The coordinator resumes the mission automatically after checks pass.
+
+Pause only dependent mutations while native state is uncertain. Continue
+read-only diagnosis and independent work, reconcile the recorded operation,
+then prepare a fresh reviewed proposal when a correction requires one. Never
+replay consumed proposals, weaken validation or treat failure as success.
+Repeated no-progress attempts require a new approach or internal escalation,
+not identical retries or an automatic user interruption. Request user action
+only after in-scope recovery is exhausted and intent, target ambiguity, scope
+or an external prerequisite genuinely requires it. This is workflow guidance;
+native rejection, asset-continuity and replay protections remain enforced.
 
 ## Current capability boundary
 
@@ -214,11 +232,12 @@ After an uncertain operation, reconcile its exact request/proposal before
 continuing. Use `pcb_library_load_status` for an exact LOAD proposal; do not
 infer rollback or retry after a partial/uncertain result. A detected cache
 change, even transient, or a break in file-lock/cache-monitoring continuity
-requires the documented stop/fresh-staging recovery, not another write.
-Never retry an Apply or LOAD, clear unrelated pending state, substitute a
-different board, enable writes, change client modes, or answer approval prompts.
-Planning and exact reviewed placement dispatch may run autonomously; library
-loading and revision Save still require the genuine interactive human-approval workflow.
+requires continued diagnosis and documented fresh-staging recovery after
+reconciliation, not another mutation in the uncertain session. Preserve that
+session's evidence and unrelated unsaved work. Never replay an Apply or LOAD,
+clear pending state, substitute a different board to claim completion or change
+host permissions. Planning and exact reviewed placement, library LOAD and
+revision SAVE dispatch autonomously; none requires a per-operation human prompt.
 
 ## Optional original-source navigation
 

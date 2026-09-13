@@ -282,10 +282,10 @@ class ManagedBoardContractTests(unittest.TestCase):
         geometry = self.procedures["opaManagedGeometry"]
         self.assertIn('member(kind \'("shape" "polygon"))', geometry)
         self.assertIn('kind == "path"', geometry)
-        self.assertIn('kind == "line"', geometry)
+        self.assertIn('member(kind \'("line" "arc"))', geometry)
         for guard in (
             "!object->voids", "!object->shapeBoundary", "!object->shapeIsBoundary",
-            "!object->shapeAuto", "!object->hasArcs", "!object->isEtch",
+            "!object->shapeAuto", "!object->isEtch",
         ):
             self.assertIn(guard, geometry)
         self.assertIn('(t opaRequire(nil "Unsupported text, figure, arc or package shape type."))', geometry)
@@ -293,6 +293,26 @@ class ManagedBoardContractTests(unittest.TestCase):
         read = self.procedures["opaManagedReadFrame"]
         self.assertIn("member(shape packageShapes)", read)
         self.assertIn("member(component->symbol design->symbols)", read)
+
+    def test_package_labels_arcs_and_support_definitions_have_explicit_ownership(self):
+        definitions = self.procedures["opaManagedDefinitions"]
+        self.assertIn('setof(item design->symdefs item->type == "PACKAGE")', definitions)
+        self.assertIn("opaLibraryObject(definition design nil 0 budget t)", definitions)
+        self.assertIn("opaSortedData(labels) signature", definitions)
+        support = self.procedures["opaManagedSupportDefinitions"]
+        self.assertIn("!definition->instances", support)
+        self.assertIn("opaLibraryObject(definition design nil 0 budget)", support)
+        self.assertIn('"support-definitions"', self.procedures["opaManagedReadFrame"])
+        label = self.procedures["opaManagedLabel"]
+        self.assertIn("value == refdes", label)
+        self.assertIn("opaLibraryPlainAttributes(block 0 budget)", label)
+        component = self.procedures["opaManagedComponent"]
+        self.assertIn("opaManagedLabel(child component->name)", component)
+        self.assertIn("opaManagedLabelPose(label origin angle)", component)
+        edge = self.procedures["opaManagedEdge"]
+        self.assertIn("object->isClockwise object->isCircle", edge)
+        self.assertIn("opaBox(object->bBox)", edge)
+        self.assertIn("opaWorld(car(nth(4 edge)) origin angle)", self.procedures["opaManagedGeometryPose"])
 
     def test_initial_placement_and_move_have_one_guarded_transaction(self):
         apply = self.procedures["opaManagedApplyTransaction"]
@@ -384,17 +404,7 @@ class ManagedBoardContractTests(unittest.TestCase):
         stacks = self.procedures["opaManagedPadstacks"]
         checks = {
             "duplicate-name": "!assoc(stack->name rows)",
-            "isThrough": "!stack->isThrough",
-            "holeType": 'member(stack->holeType \'("none" "circle_drill"))',
-            "drillDiameter": "stack->drillDiameter == 0.0",
-            "drillSizeWidth": "stack->drillSizeWidth == 0.0",
-            "drillSizeHeight": "stack->drillSizeHeight == 0.0",
-            "drillFigureName": 'member(stack->drillFigureName \'(nil "NULL"))',
             "drillNonStandard": "!stack->drillNonStandard",
-            "actualHoleDiameter": "member(stack->actualHoleDiameter '(nil 0 0.0))",
-            "actualSlotWidth": "member(stack->actualSlotWidth '(nil 0 0.0))",
-            "actualSlotHeight": "member(stack->actualSlotHeight '(nil 0 0.0))",
-            "startEnd": 'equal(stack->startEnd \'("ETCH/TOP" "ETCH/TOP"))',
             "pluralVia": "!stack->pluralVia",
             "uvia": "!stack->uvia",
             "isPadRef": "!stack->isPadRef",
@@ -420,8 +430,8 @@ class ManagedBoardContractTests(unittest.TestCase):
                       "numberp(slotHeight) && slotHeight == 0.0"):
             self.assertIn(guard, predicate)
         stacks = self.procedures["opaManagedPadstacks"]
-        self.assertIn("opaManagedSmtHoleFree(stack->holeType stack->drillDiameter", stacks)
-        self.assertIn('list("isThrough" stack->isThrough !stack->isThrough)', stacks)
+        self.assertIn("opaManagedHoleEnvelope(stack->isThrough stack->holeType stack->drillDiameter", stacks)
+        self.assertIn('if(stack->isThrough then \'("ETCH/TOP" "ETCH/BOTTOM") else \'("ETCH/TOP" "ETCH/TOP"))', stacks)
         self.assertIn("stack->actualHoleDiameter stack->actualSlotWidth stack->actualSlotHeight", stacks)
 
     def test_smt_pad_shapes_preserve_exact_boundary_and_corner_metadata(self):
@@ -436,11 +446,11 @@ class ManagedBoardContractTests(unittest.TestCase):
         self.assertIn('buildString(tokens "-") == corners', style)
         self.assertIn("!member(token seen)", style)
         pad = self.procedures["opaManagedPad"]
-        for guard in ("pad->type == \"REGULAR\"", "length(pad->figure) == 1",
+        for guard in ('member(pad->type \'("REGULAR" "ANTI" "THERMAL" "KEEPOUT"))', "length(pad->figure) == 1",
                       "!pad->figure", "opaLibraryPath(car(pad->figure) 0 budget)"):
             self.assertIn(guard, pad)
         self.assertIn("pad->flash pad->name pad->corners pad->radius pad->inside pad->sides", pad)
-        self.assertIn("boundary)", pad)
+        self.assertIn("boundary localBox)", pad)
         library = _procedures((ROOT / "skill" / "library_setup.il").read_text(encoding="ascii"))
         boundary = library["opaLibraryPath"]
         for required in ("axlPathSegGetArcCenter", "axlPathSegGetArcClockwise",
@@ -457,6 +467,52 @@ class ManagedBoardContractTests(unittest.TestCase):
                      "0.25000001", "0.25000002"):
             self.assertIn(case, source)
         self.assertIn("errset(opaManagedPadStyle", source)
+
+    def test_through_hole_support_preserves_drill_span_and_physical_pin_checks(self):
+        hole = self.procedures["opaManagedHoleEnvelope"]
+        for token in ('"circle_drill"', '"square_drill"', '"oval slot"', '"rectangle slot"',
+                      "actualDiameter", "actualWidth", "actualHeight", "opaManagedEnvelope"):
+            self.assertIn(token, hole)
+        stack = self.procedures["opaManagedPadstacks"]
+        self.assertIn("signature = opaLibraryObject(stack design nil 0 budget)", stack)
+        self.assertIn("bounds = hole", stack)
+        self.assertIn("stack->isThrough stack->startEnd signature", stack)
+        self.assertIn("equal(pin->isThrough nth(4 stack))", self.procedures["opaManagedDefinitions"])
+        self.assertIn("equal(pin->startEnd nth(5 stack))", self.procedures["opaManagedDefinitions"])
+        self.assertIn("equal(pin->isThrough nth(7 pinDef))", self.procedures["opaManagedComponent"])
+        self.assertIn("equal(physicalPads expectedPads)", self.procedures["opaManagedComponent"])
+        self.assertIn("floor(caar(box) * 10000.0)", self.procedures["opaManagedEnvelope"])
+        self.assertIn("ceiling(caadr(box) * 10000.0)", self.procedures["opaManagedEnvelope"])
+        self.assertIn("opaManagedPad(pad pin->xy pin->rotation)", self.procedures["opaManagedComponent"])
+        self.assertIn("value * 20000.0", self.procedures["opaManagedPadPoint"])
+        self.assertIn("abs(scaled - round(scaled)) < 0.0001", self.procedures["opaManagedPadPoint"])
+        self.assertIn("opaManagedPadLocalBox(pad->bBox if(origin then angle else nil))",
+                      self.procedures["opaManagedPad"])
+        self.assertIn("mod(360 - opaOrthogonal(angle) 360)", self.procedures["opaManagedPadLocalBox"])
+
+    def test_native_through_pad_acceptance_is_read_only_and_checks_rejection(self):
+        pure = (ROOT / "tests" / "native" / "through_pad_rules.il").read_text(encoding="ascii")
+        self.assertEqual(set(_procedures(pure)), {"opaManagedThroughPadRulesAcceptance"})
+        self.assertNotRegex(_code_only(pure), r"\b(?:axl\w+|load|system|eval|outfile)\(")
+        native = (ROOT / "tests" / "native" / "padstack_readonly.il").read_text(encoding="ascii")
+        self.assertEqual(set(_procedures(native)), {"opaManagedPadReadOnlyAcceptance"})
+        self.assertIn("opaBoardGuard()", native)
+        self.assertIn("equal(before after)", native)
+        self.assertNotRegex(_code_only(native),
+                            r"\baxl(?:DBCreate\w*|DBTransaction\w*|TransformObject|DRCUpdate|SaveDesign|OpenDesign)\(")
+
+    def test_original_fixture_variants_preserve_default_and_fixed_reference(self):
+        source = (ROOT / "fixtures" / "access-proof" / "create.il").read_text(encoding="ascii")
+        methods = _procedures(source.split("\naxlCmdRegister(", 1)[0])
+        self.assertIn("boundp('opaFixtureInitialPlacement)", methods["opaFixtureWantsUnplaced"])
+        self.assertIn("member(refdes '(\"R1\" \"R2\"))", methods["opaFixtureWantsUnplaced"])
+        self.assertIn("unless(opaFixtureWantsUnplaced(car(entry))", methods["opaFixtureCreate"])
+        self.assertIn('equal(car(entry) "R3")', methods["opaFixtureCreate"])
+        self.assertIn('padName = "OPA_FIXTURE_SMD"', methods["opaFixtureCreate"])
+        self.assertIn("boundp('opaFixtureThroughPads)", methods["opaFixtureCreate"])
+        self.assertIn('padName = "OPA_FIXTURE_THROUGH"', methods["opaFixtureCreate"])
+        self.assertIn("!component->symbol && length(component->pins) == 2", methods["opaFixtureVerify"])
+        self.assertIn("UNPLACED", methods["opaFixtureReceipt"])
 
     def test_logical_function_mapping_checks_both_forward_and_reverse_ownership(self):
         functions = self.procedures["opaManagedFunctions"]

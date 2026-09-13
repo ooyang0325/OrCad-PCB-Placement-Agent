@@ -132,11 +132,11 @@ The installed SKILL documentation defines `cputime()` units as ticks of
 not 176 seconds. The successful opt-in setup handshake took **16.78 wall
 seconds**, mostly in scene canonicalization. CPU benchmark time and complete
 handshake wall time are different measurements.
-The session's bounded round-trip timeout now defaults to **30 seconds**, with
+The session's bounded round-trip timeout now defaults to **60 seconds**, with
 a **60-second maximum**. Dispatch and native-receipt waiting share that deadline;
 dispatch no longer has a separate five-second cutoff while native hashing
 continues. This is a per-round-trip bound, not a promise that an entire
-multi-read visual inspection completes in 30 seconds. A timeout is not evidence
+multi-read visual inspection completes in 60 seconds. A timeout is not evidence
 of a successful inspection or a reason to replay a LOAD; use the exact pending
 read or proposal recovery path.
 
@@ -246,9 +246,10 @@ observed value, for example `Padstack VIA: unsupported isThrough=t`.
 Checks still cover unused embedded padstacks. A `circle_drill` template label
 with zero nominal drill/slot dimensions can now be accepted as hole-free SMT,
 subject to through/span, actual-hole/slot and advanced-feature checks.
-Oblong and bounded rounded/chamfered top SMT pads retain complete native
-boundaries and fine corner metadata. This is not added through-hole or slot
-placement support, and extended-variant native acceptance remains pending.
+Oblong and bounded rounded/chamfered pads retain complete native boundaries and
+fine corner metadata. Version 0.11.0 adds full-span through-hole/slot readback,
+embedded flash support and label/arc preservation; native move/rollback
+acceptance remains distinct from successful readback.
 Existing editor sessions keep their staged adapter version; changing Python or
 reloading the app extension alone does not update native diagnostics. Do not
 reload or restage a loaded in-memory board automatically to get a new message.

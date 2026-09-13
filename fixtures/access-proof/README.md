@@ -25,6 +25,21 @@ Keep the source fixture and the agent's disposable working copy separate.
 
 ## Fixed construction recipe
 
+For the 0.11.0 mixed-pad acceptance variant only, the trusted fixture bootstrap
+may set `opaFixtureThroughPads = t` before loading `create.il`. It constructs
+the same original three-part geometry and nets with a 0.4 mm plated circular
+hole and matching top/bottom rectangular pads named `OPA_FIXTURE_THROUGH`.
+The default recipe remains the original SMT fixture. Use `managed-board-v1`
+for the through-hole variant; the legacy fixture adapter remains SMT-only.
+Construction/save requires its own explicit operator authorization and does
+not establish placement, rollback or initial-symbol creation acceptance.
+
+The additional explicit bootstrap flag `opaFixtureInitialPlacement = t`
+leaves R1/R2 logically present and unplaced, while R3 remains physically placed
+and fixed so its shared embedded footprint survives save/reopen. The receipt
+marks R1/R2 `UNPLACED` and verifies their original pin/net associations.
+Neither option changes the default three-placed-part recipe.
+
 The registered `opa_fixture_create` command accepts no arguments and is not an
 agent placement API. Its trusted bootstrap binds `opaFixtureDirectory` to one
 fresh ASCII directory named `fixture-*` beneath

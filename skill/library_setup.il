@@ -83,7 +83,7 @@ procedure(opaLibraryPlainAttributes(object depth budget)
     )
 )
 
-procedure(opaLibraryObject(object owner ancestors depth budget)
+procedure(opaLibraryObject(object owner ancestors depth budget @optional placementDefinition)
     let((kind attributes rows key name value data children paths block expected required
          attached textRows seen nativeChildren)
         opaLibraryBudget(depth budget)
@@ -107,6 +107,15 @@ procedure(opaLibraryObject(object owner ancestors depth budget)
             name = symbolToString(key)
             opaRequire(!assoc(name rows) "Duplicate native library attribute.")
             cond(
+                (key == 'instances && placementDefinition && kind == "symdef"
+                    opaRequire(object->type == "PACKAGE" && length(value) <= 256
+                        "Unbounded package instance inventory.")
+                    foreach(instance value
+                        opaRequire(member(instance axlDBGetDesign()->symbols) &&
+                            instance->definition == object && instance->component &&
+                            instance->component->symbol == instance
+                            "Package instance is not accounted for by the logical inventory."))
+                    data = "managed-instances-checked-separately")
                 (key == 'parent
                     opaRequire(!value || value == owner
                         "Library object has an unaccounted owner.")
@@ -148,7 +157,7 @@ procedure(opaLibraryObject(object owner ancestors depth budget)
                                 "Physical definition-pin pads have no embedded padstack owner."))
                         children = cons(opaLibraryObject(child
                             if(kind == "pin" && key == 'pads then object->definition else object) ancestors
-                            depth + 1 budget) children))
+                            depth + 1 budget placementDefinition) children))
                     data = if(key == 'segments then reverse(children)
                         else opaSortedData(children)))
                 (kind == "pad" && key == 'figure
@@ -178,11 +187,13 @@ procedure(opaLibraryObject(object owner ancestors depth budget)
             (kind == "path" '("nSegs" "segments" "layer"))
             (kind == "line" '("startEnd" "width" "layer"))
             (kind == "arc" '("startEnd" "width" "xy" "isClockwise" "isCircle" "layer"))
-            (member(kind '("shape" "polygon")) '("nSegs" "segments" "voids" "layer"))
+            (kind == "shape" '("nSegs" "segments" "voids" "layer"))
+            (kind == "polygon" '("nSegs" "segments" "layer"))
             (kind == "figure" '("figureName" "xy" "width" "height" "rotation" "fill" "layer"))
             (kind == "text" '("text" "textBlock" "xy" "rotation" "layer")))
         foreach(name required
-            opaRequire(assoc(name rows) "Required native library geometry attributes are missing."))
+            opaRequire(assoc(name rows) sprintf(nil
+                "Required native library geometry attribute is missing: %s.%s." kind name)))
         unless(kind == "pad"
             attached = axlDBGetAttachedText(object)
             opaRequire(listp(attached) && length(attached) <= 256
@@ -192,7 +203,7 @@ procedure(opaLibraryObject(object owner ancestors depth budget)
                     !member(text seen) "Unowned or duplicate library attached text.")
                 seen = cons(text seen)
                 textRows = cons(list(if(member(text nativeChildren) then t else nil)
-                    opaLibraryObject(text object ancestors depth + 1 budget)) textRows))
+                    opaLibraryObject(text object ancestors depth + 1 budget placementDefinition)) textRows))
             ; The API inventory is separate from ->??. Capture even text absent
             ; from children, retaining whether each attachment is also a child.
             ; Leave objects with no attached text byte-for-byte compatible.

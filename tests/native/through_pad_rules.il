@@ -1,0 +1,36 @@
+; Original pure drill/span geometry cases; no Cadence database mutations.
+procedure(opaManagedThroughPadRulesAcceptance()
+    let((count value result)
+        count = 0
+        foreach(data '((t "circle_drill" 0.4 0.0 0.0)
+                       (t "square_drill" 0.7 0.7 0.7)
+                       (t "oval slot" 0.6 0.6 1.4)
+                       (t "rectangle slot" 0.0 1.0 2.0))
+            value = opaManagedHoleEnvelope(car(data) cadr(data) nth(2 data)
+                nth(3 data) nth(4 data) '(0.25 -0.25) nil nil nil)
+            opaRequire(value && caar(value) <= 2500 && caadr(value) >= 2500 &&
+                cadar(value) <= -2500 && cadadr(value) >= -2500 "Drill envelope lost the native offset.")
+            count = count + 1)
+        value = opaManagedHoleEnvelope(t "circle_drill" 0.4 0.0 0.0 '(0.0 0.0) 0.5 nil nil)
+        opaRequire(caar(value) <= -2500 && caadr(value) >= 2500 "Actual drill diameter was omitted.")
+        count = count + 1
+        foreach(data '((nil "circle_drill" 0.4 0.0 0.0)
+                       (nil "oval slot" 0.0 0.6 1.4)
+                       (t "circle_drill" 0.0 0.0 0.0)
+                       (t "circle_drill" -1.0 0.0 0.0)
+                       (t "oval slot" 0.0 0.0 1.0)
+                       (t "unknown" 0.4 0.0 0.0)
+                       (t "circle_drill" 0.4 0.5 0.0))
+            result = errset(opaManagedHoleEnvelope(car(data) cadr(data) nth(2 data)
+                nth(3 data) nth(4 data) '(0.0 0.0) nil nil nil) nil)
+            opaRequire(!result "Invalid hole profile was accepted.")
+            count = count + 1)
+        value = opaManagedEnvelope('((-0.00005 -0.00005) (0.00005 0.00005)))
+        opaRequire(equal(value '((-1 -1) (1 1))) "Half-DBU envelope was not rounded outward.")
+        count = count + 1
+        value = opaManagedPadLocalBox('((-0.5 -0.4) (0.5 0.4)) 90)
+        opaRequire(equal(value '((-8000 -10000) (8000 10000)))
+            "Rotated relative pad box did not recover its pin-local half-DBUs.")
+        count + 1
+    )
+)

@@ -1,7 +1,7 @@
 ---
 name: PCB placement executor
 description: Execute PCB design tasks autonomously, including Cadence setup, library loading, raw SKILL, placement, and save/reopen, with native verification.
-tools: ["read", "search", "edit", "execute", "agent", "pcb_reference_catalog", "pcb_reference_search", "pcb_reference_rule", "pcb_sessions", "pcb_placement_intake", "pcb_read_proposal", "pcb_inspect", "pcb_inspection_status", "pcb_prepare_placement", "pcb_plan_placement", "pcb_prepare_next_placement", "pcb_apply_placement", "pcb_execution_status", "pcb_placement_status", "pcb_prepare_save", "pcb_save_revision", "pcb_save_status", "pcb_inspect_libraries", "pcb_prepare_library_load", "pcb_load_libraries", "pcb_library_load_status"]
+tools: ["read", "search", "edit", "execute", "agent", "pcb_reference_catalog", "pcb_reference_search", "pcb_reference_rule", "pcb_sessions", "pcb_placement_intake", "pcb_read_proposal", "pcb_review_proposal", "pcb_inspect", "pcb_inspection_status", "pcb_prepare_placement", "pcb_plan_placement", "pcb_prepare_next_placement", "pcb_apply_placement", "pcb_execution_status", "pcb_placement_status", "pcb_prepare_save", "pcb_save_revision", "pcb_save_status", "pcb_inspect_libraries", "pcb_prepare_library_load", "pcb_load_libraries", "pcb_library_load_status"]
 agents: ["PCB placement planner", "PCB layout reviewer"]
 ---
 
@@ -61,6 +61,14 @@ and the ordinary board afterward. A library load is not placement or persistence
 
 ## Execution and verification
 
+`pcb_review_proposal` provides a pre-execution checkpoint with ONE fresh PNG,
+gated by full native scene equality with the prepared proposal. Inspect its
+pixels and require `scene_matches_proposal: true`; a changed scene blocks
+that proposal, not the recovery workflow. Inspect the change, prepare a fresh
+proposal and obtain independent review before dispatch. This avoids a second
+archived-image download but does not replace
+independent review. Do not claim to have seen the archive when using this path.
+
 1. Establish the exact target and preserve a recoverable baseline before the
    first mutation. Inspect native inventory, geometry, connectivity, constraints
    and an actual Cadence-window PNG. Use project grid/clearance requirements.
@@ -86,6 +94,34 @@ and the ordinary board afterward. A library load is not placement or persistence
 
 ## Continuation and handoff
 
+### Validation recovery
+
+A validation failure is a recovery step, not a reason to end the turn. Give a
+brief non-blocking progress update and immediately diagnose, repair and recheck
+within the assigned scope. Do not ask the user to say "continue" or approve a
+repair merely because a test, build, native check, image capture or review failed.
+
+Record the failing check, exact diagnostic and affected state. For software
+failures, fix the local cause and rerun the focused check. For a rejected or
+rolled-back native operation, verify the actual state, resolve the cause, then
+prepare and independently review a fresh proposal. For a timeout, partial LOAD
+or indeterminate outcome, reconcile the exact recorded operation first; pause
+only dependent mutations while continuing read-only diagnosis and other work
+that does not depend on the uncertain state. Never replay a consumed proposal.
+
+Do not disable validation, weaken checks, clear pending state, or mark a failed
+check as passed to make progress. Every retry needs a correction, new evidence
+or a verified transient cause. If the same attempt makes no progress, change
+the diagnostic approach or use the planner/reviewer internally; a retry budget
+alone is not a reason to interrupt the user. Do not loop identical attempts.
+
+Resume the mission automatically once the focused checks pass and the native
+state is reconciled. Return an unresolved failure to the coordinator as a
+recovery handoff with evidence and the next action, not a request for the user
+to restart work. Request user input only for missing intent, target ambiguity,
+scope changes or an external prerequisite that available tools cannot resolve.
+Never claim completion while required validation remains failed or unverified.
+
 For coordinator work packages, stay within the supplied batch and return
 native outcomes, observation IDs and remaining issues directly to the caller.
 For direct tasks, continue through the authorized objective rather than stopping
@@ -100,7 +136,8 @@ implementation is requested, develop and test the missing path before relying
 on it for a user design. Software tests do not establish native acceptance;
 validate new mutations on a disposable fixture. Stop affected writes when an
 outcome is uncertain, but continue safe diagnosis and reconciliation. Report a
-blocker only with concrete evidence, attempted remediation and the remaining
+final blocker only after in-scope recovery paths are exhausted, with concrete
+evidence, attempted remediation and the remaining
 dependency; do not label authorized LOAD/SAVE development as outside scope.
 
 Retrieve handoff rule IDs with `pcb_reference_rule`; bundled search needs no

@@ -6,9 +6,10 @@
 ; DOC/FUNCS/axlDBCreateSymbol.txt, axlLoadSymbol.txt, axlDBRefreshId.txt,
 ; axlDbidDoc.txt, axlPadDbidDoc.txt and DOC/QIR/CHANGE/axlCmdRegister.txt.
 
-procedure(opaManagedName(value)
+procedure(opaManagedName(value @optional context)
     opaField(value)
-    opaRequire(strlen(value) > 0 "An inventory name is empty.")
+    opaRequire(strlen(value) > 0
+        strcat("An inventory name is empty." if(context then strcat(" Context: " context) else "")))
     value
 )
 
@@ -201,22 +202,33 @@ procedure(opaManagedObjectGuard(object)
             "Unsupported nested or non-room/non-net group membership."))
     opaRequire(!axlDBGetAttachedText(object) ||
         (object->layer == "BOARD GEOMETRY/TOP_ROOM" &&
-         member(object->objType '("polygon" "shape")) && length(object->parentGroups) <= 1)
+         member(object->objType '("polygon" "shape")) && length(object->parentGroups) <= 1) ||
+        (object->objType == "symdef" && member(object axlDBGetDesign()->symdefs)) ||
+        (member(object->objType '("symbol" "pin")) &&
+         (member(object->parent axlDBGetDesign()->symdefs) ||
+          member(object axlDBGetDesign()->symbols) ||
+          (object->parent && member(object->parent axlDBGetDesign()->symbols))))
         sprintf(nil "Attached text is supported only on a protected placement-room drawing; object type: %s."
             object->objType))
     t
 )
 
 procedure(opaManagedEdge(object)
-    let((points width)
+    let((points width arc)
         opaManagedObjectGuard(object)
-        opaRequire(object->objType == "line" && !object->isEtch
-            "Only straight non-copper package edges are supported.")
+        opaRequire(member(object->objType '("line" "arc")) && !object->isEtch
+            "Only line/arc non-copper package edges are supported.")
         points = foreach(mapcar point object->startEnd opaPoint(point))
         width = opaDbu(object->width)
-        opaRequire(length(points) == 2 && !equal(car(points) cadr(points)) && width >= 0
-            "Invalid straight package edge.")
-        list(opaSortedData(points) width object->font opaProps(object))
+        opaRequire(length(points) == 2 && width >= 0 "Invalid package edge.")
+        if(object->objType == "arc" then
+            opaRequire(member(object->isClockwise '(nil t)) && member(object->isCircle '(nil t))
+                "Unknown package arc orientation.")
+            arc = list(opaPoint(object->xy) object->isClockwise object->isCircle)
+        else
+            opaRequire(!equal(car(points) cadr(points)) "Degenerate line edge.")
+            points = opaSortedData(points))
+        list(points width object->font opaProps(object) arc opaBox(object->bBox))
     )
 )
 
@@ -229,36 +241,41 @@ procedure(opaManagedGeometry(object)
               "PACKAGE KEEPIN/ALL" "PACKAGE KEEPOUT/TOP"
               "BOARD GEOMETRY/TOP_ROOM"
               "PACKAGE GEOMETRY/PLACE_BOUND_TOP" "PACKAGE GEOMETRY/DFA_BOUND_TOP"
-              "PACKAGE GEOMETRY/SILKSCREEN_TOP" "PACKAGE GEOMETRY/ASSEMBLY_TOP"))
+              "PACKAGE GEOMETRY/SILKSCREEN_TOP" "PACKAGE GEOMETRY/ASSEMBLY_TOP"
+              "REF DES/ASSEMBLY_TOP" "REF DES/SILKSCREEN_TOP" "ROUTE KEEPOUT/ALL"))
             "Unsupported board or package geometry layer.")
         box = opaBox(object->bBox)
         opaRequire(box "Package geometry has no bounding box.")
         cond(
             (member(kind '("shape" "polygon"))
-                opaRequire(object->isRect && object->nSegs == 4 &&
-                    length(object->segments) == 4 && !object->voids &&
+                opaRequire(object->nSegs == length(object->segments) &&
+                    length(object->segments) >= 2 && length(object->segments) <= 256 && !object->voids &&
                     !object->shapeBoundary && !object->shapeIsBoundary &&
                     !object->shapeAuto && !object->cavity && !object->isHole &&
                     !object->fillet && !object->taper && !object->dynamicGroup
-                    "Only static rectangular shapes without voids are supported.")
+                    "Only bounded static shapes without voids are supported.")
+                opaRequire(object->isRect || rexMatchp("^PACKAGE GEOMETRY/" object->layer) ||
+                    object->layer == "ROUTE KEEPOUT/ALL" "Nonrectangular placement keepouts remain unsupported.")
                 fill = if(kind == "polygon" then nil else object->fill)
                 opaRequire(fill == nil || fill == t "Hatched shapes are unsupported.")
                 foreach(segment object->segments
                     edges = cons(opaManagedEdge(segment) edges))
-                foreach(edge edges
-                    points = car(edge)
-                    opaRequire(cadr(edge) == 0 &&
-                        (caar(points) == caadr(points) || cadar(points) == cadadr(points))
-                        "Rectangle edges must be zero-width and axis-aligned.")))
+                when(object->isRect
+                    opaRequire(length(edges) == 4 "Rectangle must have four edges.")
+                    foreach(edge edges
+                        points = car(edge)
+                        opaRequire(!nth(4 edge) && cadr(edge) == 0 &&
+                            (caar(points) == caadr(points) || cadar(points) == cadadr(points))
+                            "Rectangle edges must be zero-width and axis-aligned."))))
             (kind == "path"
-                opaRequire(!object->isEtch && !object->hasArcs && !object->branch &&
+                opaRequire(!object->isEtch && !object->branch &&
                     !object->symbolEtch && !object->startEnd &&
                     object->nSegs == length(object->segments) &&
                     length(object->segments) > 0 && length(object->segments) <= 256
-                    "Unsupported routed, curved, empty or oversized package path.")
+                    "Unsupported routed, empty or oversized package path.")
                 foreach(segment object->segments
                     edges = cons(opaManagedEdge(segment) edges)))
-            (kind == "line" edges = list(opaManagedEdge(object)))
+            (member(kind '("line" "arc")) edges = list(opaManagedEdge(object)))
             (t opaRequire(nil "Unsupported text, figure, arc or package shape type."))
         )
         list(kind object->layer fill box opaSortedData(edges) opaProps(object))
@@ -269,6 +286,7 @@ procedure(opaManagedGeometryBounds(data)
     let((box points width margin edgeBox)
         box = nth(3 data)
         foreach(edge nth(4 data)
+            box = opaManagedUnion(box nth(5 edge))
             points = car(edge)
             width = cadr(edge)
             ; Round an odd half-DBU stroke outward rather than underestimating it.
@@ -287,8 +305,12 @@ procedure(opaManagedGeometryPose(data origin angle)
     list(car(data) cadr(data) nth(2 data)
         opaWorldBox(nth(3 data) origin angle)
         opaSortedData(foreach(mapcar edge nth(4 data)
-            list(opaSortedData(foreach(mapcar point car(edge) opaWorld(point origin angle)))
-                 cadr(edge) nth(2 edge) nth(3 edge)))))
+            list(if(nth(4 edge)
+                    then foreach(mapcar point car(edge) opaWorld(point origin angle))
+                    else opaSortedData(foreach(mapcar point car(edge) opaWorld(point origin angle))))
+                 cadr(edge) nth(2 edge) nth(3 edge)
+                 when(nth(4 edge) cons(opaWorld(car(nth(4 edge)) origin angle) cdr(nth(4 edge))))
+                 opaWorldBox(nth(5 edge) origin angle)))))
 )
 
 procedure(opaManagedGeometryShape(data)
@@ -308,6 +330,61 @@ procedure(opaManagedSmtHoleFree(holeType diameter slotWidth slotHeight)
         numberp(diameter) && diameter == 0.0 &&
         numberp(slotWidth) && slotWidth == 0.0 &&
         numberp(slotHeight) && slotHeight == 0.0 then t else nil)
+)
+
+procedure(opaManagedEnvelope(box)
+    let((low high)
+        opaRequire(listp(box) && length(box) == 2 &&
+            listp(car(box)) && length(car(box)) == 2 &&
+            listp(cadr(box)) && length(cadr(box)) == 2 "Missing native geometry envelope.")
+        foreach(point box foreach(value point
+            opaRequire(numberp(value) && abs(value) <= 10000.0 "Unbounded native geometry envelope.")))
+        low = list(floor(caar(box) * 10000.0) floor(cadar(box) * 10000.0))
+        high = list(ceiling(caadr(box) * 10000.0) ceiling(cadadr(box) * 10000.0))
+        opaRequire(caar(box) < caadr(box) && cadar(box) < cadadr(box)
+            "Degenerate native geometry envelope.")
+        list(low high)
+    )
+)
+
+procedure(opaManagedHoleEnvelope(through holeType diameter width height offset actualDiameter actualWidth actualHeight)
+    let((sizeX sizeY)
+        opaRequire(member(through '(nil t)) "Invalid native through-hole flag.")
+        foreach(value list(diameter width height)
+            opaRequire(numberp(value) && value >= 0 && value <= 10000.0
+                "Invalid nominal drill or slot dimension."))
+        foreach(value list(actualDiameter actualWidth actualHeight)
+            opaRequire(!value || (numberp(value) && value >= 0 && value <= 10000.0)
+                "Invalid actual drill or slot dimension."))
+        opaRequire(listp(offset) && length(offset) == 2 "Missing native drill offset.")
+        foreach(value offset
+            opaRequire(numberp(value) && abs(value) <= 10000.0 "Invalid native drill offset."))
+        if(!through then
+            opaRequire(opaManagedSmtHoleFree(holeType diameter width height) &&
+                member(actualDiameter '(nil 0 0.0)) && member(actualWidth '(nil 0 0.0)) &&
+                member(actualHeight '(nil 0 0.0)) "Non-through padstack contains a drill or slot.")
+            nil
+        else
+            cond(
+                (member(holeType '("circle_drill" "square_drill"))
+                    opaRequire(diameter > 0 && (width == 0 || width == diameter) &&
+                        (height == 0 || height == diameter) &&
+                        member(actualWidth '(nil 0 0.0)) && member(actualHeight '(nil 0 0.0))
+                        "Drilled padstack has inconsistent hole dimensions.")
+                    sizeX = max(diameter if(actualDiameter then actualDiameter else 0))
+                    sizeY = sizeX)
+                (member(holeType '("oval slot" "rectangle slot"))
+                    opaRequire(width > 0 && height > 0 && diameter <= max(width height) &&
+                        member(actualDiameter '(nil 0 0.0)) "Slotted padstack has inconsistent hole dimensions.")
+                    ; Orientation is retained in the raw drill figure. A square
+                    ; of the larger axis conservatively covers either slot convention.
+                    sizeX = max(width height if(actualWidth then actualWidth else 0)
+                        if(actualHeight then actualHeight else 0))
+                    sizeY = sizeX)
+                (t opaRequire(nil "Unsupported through-hole shape.")))
+            opaManagedEnvelope(list(list(car(offset) - sizeX / 2.0 cadr(offset) - sizeY / 2.0)
+                list(car(offset) + sizeX / 2.0 cadr(offset) + sizeY / 2.0))))
+    )
 )
 
 procedure(opaManagedPadStyle(figureName radius corners inside sides box)
@@ -340,35 +417,98 @@ procedure(opaManagedPadStyle(figureName radius corners inside sides box)
     )
 )
 
-procedure(opaManagedPad(pad)
-    let((active box offset boundary budget)
+procedure(opaManagedPadPoint(point @optional origin angle)
+    let((result base scaled)
+        opaRequire(listp(point) && length(point) == 2 "Missing native pad-boundary point.")
+        foreach(value point
+            opaRequire(numberp(value) && abs(value) <= 10000.0 "Unbounded native pad point.")
+            scaled = value * 20000.0
+            opaRequire(abs(scaled - round(scaled)) < 0.0001
+                "Pad boundary is not representable on the native half-DBU lattice.")
+            result = append(result list(round(scaled))))
+        when(origin
+            base = opaManagedPadPoint(origin)
+            result = opaRotate(list(car(result) - car(base) cadr(result) - cadr(base))
+                mod(360 - opaOrthogonal(angle) 360)))
+        result
+    )
+)
+
+procedure(opaManagedPadBoundary(boundary origin angle)
+    list(car(boundary) foreach(mapcar segment cadr(boundary)
+        list(opaManagedPadPoint(car(segment) origin angle) cadr(segment)
+            when(nth(2 segment) opaManagedPadPoint(nth(2 segment) origin angle)) nth(3 segment))))
+)
+
+procedure(opaManagedPadLocalBox(box angle)
+    when(box
+        opaWorldBox(list(opaManagedPadPoint(car(box)) opaManagedPadPoint(cadr(box)))
+            '(0 0) if(angle then mod(360 - opaOrthogonal(angle) 360) else 0)))
+)
+
+procedure(opaManagedPadMismatch(expected actual)
+    let((matches result left right)
+        result = "Native pin pad geometry differs from its protected padstack."
+        foreach(pad actual
+            matches = setof(item expected car(item) == car(pad) && cadr(item) == cadr(pad))
+            when(length(matches) == 1 && !equal(car(matches) pad)
+                for(index 0 length(pad) - 1
+                    when(!equal(nth(index car(matches)) nth(index pad))
+                        left = opaStable(nth(index car(matches)))
+                        right = opaStable(nth(index pad))
+                        result = sprintf(nil "Pad %L/%L field %d differs: expected %s; actual %s."
+                            car(pad) cadr(pad) index
+                            substring(left 1 min(strlen(left) 180))
+                            substring(right 1 min(strlen(right) 180)))))))
+        result
+    )
+)
+
+procedure(opaManagedPad(pad @optional origin angle)
+    let((active box offset boundary budget support localBox)
         opaRequire(pad "Missing native pad data.")
+        localBox = opaManagedPadLocalBox(pad->bBox if(origin then angle else nil))
+        offset = if(pad->offset then opaPoint(pad->offset) else nil)
+        when(origin && offset
+            offset = opaRotate(offset mod(360 - opaOrthogonal(angle) 360)))
         active = !member(pad->figureName '(nil "NULL"))
         when(active
-            opaRequire(member(pad->layer '("ETCH/TOP" "PIN/SOLDERMASK_TOP"
-                    "PIN/PASTEMASK_TOP")) &&
-                pad->type == "REGULAR" && member(pad->name '(nil "")) &&
-                member(pad->flash '(nil ""))
-                "Only top-side regular SMT and mask pads without external symbols are supported.")
-            box = opaManagedBox(pad->bBox)
-            offset = opaPoint(pad->offset)
-            opaManagedPadStyle(pad->figureName pad->radius pad->corners pad->inside pad->sides box)
+            opaRequire(member(pad->type '("REGULAR" "ANTI" "THERMAL" "KEEPOUT")) &&
+                (member(pad->layer '(internal composite adjacent)) ||
+                 member(pad->layer foreach(mapcar layer axlSubclassRoute() strcat("ETCH/" layer))) ||
+                 member(pad->layer '("PIN/SOLDERMASK_TOP" "PIN/SOLDERMASK_BOTTOM"
+                     "PIN/PASTEMASK_TOP" "PIN/PASTEMASK_BOTTOM" "PIN/FILMMASKTOP" "PIN/FILMMASKBOTTOM")))
+                "Unsupported pad layer or pad type.")
+            box = opaManagedEnvelope(pad->bBox)
+            opaRequire(offset "Active pad offset is missing.")
+            when(origin
+                box = opaWorldBox(box '(0 0) mod(360 - opaOrthogonal(angle) 360)))
+            if(member(pad->figureName '("SHAPE" "FLASH")) then
+                support = if(member(pad->name '(nil "")) then pad->flash else pad->name)
+                opaRequire(stringp(support) && strlen(support) > 0 &&
+                    length(setof(definition axlDBGetDesign()->symdefs
+                        definition->name == support && definition->type == pad->figureName)) == 1
+                    "Pad references an unresolved embedded shape or flash.")
+            else
+                opaRequire(member(pad->name '(nil "")) && member(pad->flash '(nil ""))
+                    "Primitive pad unexpectedly references an external definition.")
+                opaManagedPadStyle(pad->figureName pad->radius pad->corners pad->inside pad->sides box))
             opaRequire(listp(pad->figure) && length(pad->figure) == 1
                 "An active SMT pad requires one complete native boundary.")
             budget = makeTable('opaManagedPadBudget 0)
-            boundary = opaLibraryPath(car(pad->figure) 0 budget))
+            boundary = opaManagedPadBoundary(opaLibraryPath(car(pad->figure) 0 budget) origin angle))
         unless(active
             opaRequire(!pad->figure "NULL SMT pad unexpectedly has native boundary geometry."))
         list(pad->layer pad->type pad->figureName
             if(active then box else opaBox(pad->bBox))
-            if(pad->offset then opaPoint(pad->offset) else nil)
+            offset
             pad->flash pad->name pad->corners pad->radius pad->inside pad->sides
-            boundary)
+            boundary localBox)
     )
 )
 
 procedure(opaManagedPadstacks(design)
-    let((rows pads bounds box offset top)
+    let((rows pads bounds box offset top hole budget signature)
         opaRequire(length(design->padstacks) > 0 && length(design->padstacks) <= 1024
             "Embedded padstack inventory is missing or oversized.")
         foreach(stack design->padstacks
@@ -376,17 +516,9 @@ procedure(opaManagedPadstacks(design)
             opaManagedName(stack->name)
             foreach(check list(
                 list("duplicate-name" stack->name !assoc(stack->name rows))
-                list("isThrough" stack->isThrough !stack->isThrough)
-                list("holeType" stack->holeType member(stack->holeType '("none" "circle_drill")))
-                list("drillDiameter" stack->drillDiameter stack->drillDiameter == 0.0)
-                list("drillSizeWidth" stack->drillSizeWidth stack->drillSizeWidth == 0.0)
-                list("drillSizeHeight" stack->drillSizeHeight stack->drillSizeHeight == 0.0)
-                list("drillFigureName" stack->drillFigureName member(stack->drillFigureName '(nil "NULL")))
                 list("drillNonStandard" stack->drillNonStandard !stack->drillNonStandard)
-                list("actualHoleDiameter" stack->actualHoleDiameter member(stack->actualHoleDiameter '(nil 0 0.0)))
-                list("actualSlotWidth" stack->actualSlotWidth member(stack->actualSlotWidth '(nil 0 0.0)))
-                list("actualSlotHeight" stack->actualSlotHeight member(stack->actualSlotHeight '(nil 0 0.0)))
-                list("startEnd" stack->startEnd equal(stack->startEnd '("ETCH/TOP" "ETCH/TOP")))
+                list("startEnd" stack->startEnd equal(stack->startEnd
+                    if(stack->isThrough then '("ETCH/TOP" "ETCH/BOTTOM") else '("ETCH/TOP" "ETCH/TOP"))))
                 list("pluralVia" stack->pluralVia !stack->pluralVia)
                 list("uvia" stack->uvia !stack->uvia)
                 list("isPadRef" stack->isPadRef !stack->isPadRef)
@@ -396,13 +528,15 @@ procedure(opaManagedPadstacks(design)
                 list("backdrillDiameter" stack->backdrillDiameter !stack->backdrillDiameter)
                 list("padSuppresion" stack->padSuppresion member(stack->padSuppresion '(nil t))))
                 opaRequire(nth(2 check) sprintf(nil
-                    "Padstack %s: unsupported %s=%L. Full placement requires simple top-side SMT padstacks; no geometry was changed."
+                    "Padstack %s: unsupported %s=%L. No geometry was changed."
                     stack->name car(check) cadr(check))))
-            opaRequire(opaManagedSmtHoleFree(stack->holeType stack->drillDiameter
-                stack->drillSizeWidth stack->drillSizeHeight)
-                sprintf(nil "Padstack %s: a hole-free SMT definition is required." stack->name))
+            hole = opaManagedHoleEnvelope(stack->isThrough stack->holeType stack->drillDiameter
+                stack->drillSizeWidth stack->drillSizeHeight stack->drillOffset
+                stack->actualHoleDiameter stack->actualSlotWidth stack->actualSlotHeight)
+            budget = makeTable('opaManagedStackBudget 0)
+            signature = opaLibraryObject(stack design nil 0 budget)
             pads = nil
-            bounds = nil
+            bounds = hole
             opaRequire(length(stack->pads) <= 128
                 sprintf(nil "Padstack %s: pad count %d exceeds 128." stack->name length(stack->pads)))
             foreach(pad stack->pads
@@ -424,18 +558,57 @@ procedure(opaManagedPadstacks(design)
                      stack->drillOffset stack->spanLockCount stack->startEnd
                      stack->padSuppresion opaProps(stack)
                      stack->drillFigureName stack->drillNonStandard
-                     stack->actualHoleDiameter stack->actualSlotWidth stack->actualSlotHeight)) rows))
+                     stack->actualHoleDiameter stack->actualSlotWidth stack->actualSlotHeight)
+                stack->isThrough stack->startEnd signature) rows))
         opaSortedData(rows)
     )
 )
 
+procedure(opaManagedSupportDefinitions(design)
+    let((rows budget)
+        budget = makeTable('opaManagedSupportBudget 0)
+        foreach(definition setof(item design->symdefs item->type != "PACKAGE")
+            opaRequire(member(definition->type '("FLASH" "SHAPE" "MECHANICAL" "FORMAT")) &&
+                !definition->instances && definition->parent == design
+                "Unsupported or instanced non-package definition.")
+            opaRequire(!assoc(definition->name rows) "Duplicate supporting definition.")
+            rows = cons(list(definition->name definition->type
+                opaLibraryObject(definition design nil 0 budget)) rows))
+        opaSortedData(rows)
+    )
+)
+
+procedure(opaManagedLabel(text refdes)
+    let((block value budget)
+        opaManagedObjectGuard(text)
+        opaRequire(text->objType == "text" && text->parent &&
+            (member(text->layer '("REF DES/ASSEMBLY_TOP" "REF DES/SILKSCREEN_TOP")) ||
+             (text->layer == "PACKAGE GEOMETRY/PIN_NUMBER" && text->parent->objType == "pin")) &&
+            !text->isMirrored "Unsupported footprint label type, layer or side.")
+        value = text->text
+        if(refdes then opaRequire(value == refdes "Native reference label differs from its component.")
+        else opaRequire(stringp(value) && strlen(value) >= 2 &&
+            member(substring(value strlen(value) 1) '("?" "*")) "Unsupported reference-label template."))
+        block = axlGetParam(strcat("paramTextBlock:" text->textBlock))
+        opaRequire(block && block->objType == "paramTextBlock" "Footprint label text parameters unavailable.")
+        budget = makeTable('opaManagedLabelBudget 0)
+        list(text->layer opaPoint(text->xy) opaOrthogonal(text->rotation)
+            text->justify text->mirrorType text->textBlock
+            opaLibraryPlainAttributes(block 0 budget) opaProps(text))
+    )
+)
+
+procedure(opaManagedLabelPose(data origin angle)
+    append(list(car(data) opaWorld(cadr(data) origin angle) mod(nth(2 data) + angle 360)) cdddr(data))
+)
+
 procedure(opaManagedDefinitions(design padstacks)
-    let((rows pins geometry bounds stack position rotation item bodyCount)
+    let((rows pins geometry bounds stack position rotation item bodyCount labels signature budget pinLabels)
         opaRequire(length(design->symdefs) > 0 && length(design->symdefs) <= 256
             "Missing or oversized embedded footprint inventory.")
-        foreach(definition design->symdefs
+        foreach(definition setof(item design->symdefs item->type == "PACKAGE")
             opaManagedObjectGuard(definition)
-            opaManagedName(definition->name)
+            opaManagedName(definition->name "package definition")
             opaRequire(definition->type == "PACKAGE" && !assoc(definition->name rows) &&
                 length(definition->pins) > 0 && length(definition->pins) <= 256 &&
                 length(definition->children) > 0 && length(definition->children) <= 256
@@ -444,37 +617,51 @@ procedure(opaManagedDefinitions(design padstacks)
             geometry = nil
             bounds = nil
             bodyCount = 0
+            labels = nil
+            budget = makeTable('opaManagedDefinitionBudget 0)
+            signature = opaLibraryObject(definition design nil 0 budget t)
+            foreach(text axlDBGetAttachedText(definition)
+                opaRequire(member(text definition->children) "Unaccounted package attached label."))
             foreach(child definition->children
-                opaRequire(child->parent == definition &&
-                    rexMatchp("^PACKAGE GEOMETRY/" child->layer)
-                    "Definition contains unowned or non-package geometry.")
-                item = opaManagedGeometry(child)
-                geometry = cons(item geometry)
-                bounds = opaManagedUnion(bounds opaManagedGeometryBounds(item))
-                when(child->layer == "PACKAGE GEOMETRY/PLACE_BOUND_TOP"
-                    opaRequire(member(child->objType '("shape" "polygon")) && child->fill
-                        "Explicit top place bounds must be filled rectangles.")
-                    bodyCount = bodyCount + 1))
+                opaRequire(child->parent == definition "Definition contains unowned geometry.")
+                if(child->objType == "text" then labels = cons(opaManagedLabel(child nil) labels)
+                else
+                    opaRequire(rexMatchp("^PACKAGE GEOMETRY/" child->layer) ||
+                        member(child->layer '("REF DES/ASSEMBLY_TOP" "REF DES/SILKSCREEN_TOP" "ROUTE KEEPOUT/ALL"))
+                        "Definition contains unsupported geometry layers.")
+                    item = opaManagedGeometry(child)
+                    geometry = cons(item geometry)
+                    bounds = opaManagedUnion(bounds opaManagedGeometryBounds(item))
+                    when(child->layer == "PACKAGE GEOMETRY/PLACE_BOUND_TOP"
+                        opaRequire(member(child->objType '("shape" "polygon")) && child->fill
+                            "Explicit top place bounds must be filled rectangles.")
+                        bodyCount = bodyCount + 1)))
             opaRequire(bodyCount > 0 "Footprint has no explicit top placement bounds.")
             foreach(pin definition->pins
                 opaManagedObjectGuard(pin)
-                opaManagedName(pin->number)
+                pinLabels = foreach(mapcar text axlDBGetAttachedText(pin)
+                    opaRequire(text->parent == pin && text->layer == "PACKAGE GEOMETRY/PIN_NUMBER"
+                        "Unowned or unsupported definition-pin label.")
+                    opaManagedLabel(text pin->number))
+                opaManagedName(pin->number strcat("physical pin in " definition->name))
                 stack = assoc(pin->name padstacks)
                 opaRequire(stack && !assoc(pin->number pins) && pin->definition &&
                     pin->definition->name == pin->name && !pin->isMech &&
-                    !pin->isMirrored && !pin->isThrough && !pin->isExploded &&
+                    !pin->isMirrored && equal(pin->isThrough nth(4 stack)) &&
+                    equal(pin->startEnd nth(5 stack)) && !pin->isExploded &&
                     !pin->testPoint && !pin->bondpad
                     "Unsupported, duplicate or unresolved physical definition pin.")
                 position = opaPoint(pin->xy)
                 rotation = opaOrthogonal(pin->rotation)
                 bounds = opaManagedUnion(bounds opaWorldBox(nth(1 stack) position rotation))
                 pins = cons(list(pin->number pin->name position rotation
-                    opaProps(pin) pin->use pin->startEnd) pins))
+                    opaProps(pin) pin->use pin->startEnd pin->isThrough opaSortedData(pinLabels)) pins))
             opaRequire(bounds "Footprint bounds cannot be established.")
             ; Never use definition->instances: immutable data must survive an
             ; unplaced-to-placed transition without changing its fingerprint.
             rows = cons(list(definition->name bounds opaSortedData(pins)
-                opaSortedData(geometry) opaProps(definition) opaBox(definition->bBox)) rows))
+                opaSortedData(geometry) opaProps(definition) opaBox(definition->bBox)
+                opaSortedData(labels) signature) rows))
         opaSortedData(rows)
     )
 )
@@ -487,7 +674,7 @@ procedure(opaManagedCompdef(definition)
             length(definition->functions) <= 256 "Unsupported logical definition.")
         foreach(pin definition->pins
             opaManagedObjectGuard(pin)
-            opaManagedName(pin->number)
+            opaManagedName(pin->number "logical definition pin")
             opaRequire(!assoc(pin->number pins) "Duplicate logical definition pin.")
             pins = cons(list(pin->number pin->use opaProps(pin)) pins))
         foreach(function definition->functions
@@ -514,7 +701,7 @@ procedure(opaManagedFunctions(component)
         definitions = component->compdef->functions
         foreach(function component->functions
             opaManagedObjectGuard(function)
-            opaManagedName(function->name)
+            opaManagedName(function->name strcat("function in " component->name))
             matches = setof(item definitions
                 item->slot == function->slot && item->type == function->type)
             opaRequire(function->objType == "function" && function->parent == component &&
@@ -553,9 +740,9 @@ procedure(opaManagedFunctions(component)
 procedure(opaManagedComponent(component definitions padstacks)
     let((definition symbol placed origin angle fixed bounds intrinsic geometry pins localPins
          nativePins pinDef netName padstack physicalPads expectedPads symbolState localGeometry
-         item pinState)
+         item pinState labels pinLabels netData)
         opaManagedObjectGuard(component)
-        opaManagedName(component->name)
+        opaManagedName(component->name "component")
         opaRequire(strlen(component->name) <= 31 &&
             rexMatchp("^[A-Za-z]" component->name) &&
             !rexMatchp("[^A-Za-z0-9_]" component->name)
@@ -580,44 +767,60 @@ procedure(opaManagedComponent(component definitions padstacks)
                 symbol->definition && symbol->definition->name == component->package &&
                 !symbol->isMirrored && !symbol->embedded && !symbol->embeddedLayer &&
                 !symbol->zone && !symbol->etchChildren &&
-                length(symbol->children) == length(nth(3 definition)) &&
+                length(symbol->children) == length(nth(3 definition)) + length(nth(6 definition)) &&
                 length(symbol->pins) == length(component->pins)
                 "Unsupported physical symbol, instance geometry, side or attached copper.")
             origin = opaPoint(symbol->xy)
             angle = opaOrthogonal(symbol->rotation)
             fixed = if(fixed || axlDBIsFixed(symbol) then t else nil)
             bounds = opaWorldBox(nth(1 definition) origin angle)
+            foreach(text axlDBGetAttachedText(symbol)
+                opaRequire(member(text symbol->children) "Unaccounted instance attached label."))
             foreach(child symbol->children
                 opaRequire(child->parent == symbol "Unowned symbol geometry.")
-                item = opaManagedGeometry(child)
-                geometry = cons(item geometry)
-                localGeometry = cons(list(opaManagedLocalGeometry(item origin angle)
-                    axlDBIsReadOnly(child) if(axlDBIsFixed(child) then t else nil)) localGeometry))
+                if(child->objType == "text" then labels = cons(opaManagedLabel(child component->name) labels)
+                else
+                    item = opaManagedGeometry(child)
+                    geometry = cons(item geometry)
+                    localGeometry = cons(list(opaManagedLocalGeometry(item origin angle)
+                        axlDBIsReadOnly(child) if(axlDBIsFixed(child) then t else nil)) localGeometry)))
+            opaRequire(equal(opaSortedData(labels)
+                opaSortedData(foreach(mapcar label nth(6 definition) opaManagedLabelPose(label origin angle))))
+                "Native reference-label placement differs from its footprint template.")
             opaRequire(equal(
                 opaSortedData(foreach(mapcar item geometry opaManagedGeometryShape(item)))
                 opaSortedData(foreach(mapcar item nth(3 definition)
                     opaManagedGeometryPose(item origin angle))))
                 "Actual instance geometry is not the embedded definition at its pose.")
             symbolState = list(list("symbol" opaProps(symbol) axlDBIsReadOnly(symbol))
-                list("geometry" opaSortedData(localGeometry)))
+                list("geometry" opaSortedData(localGeometry))
+                list("labels" nth(6 definition)))
             nativePins = symbol->pins)
         foreach(pin component->pins
             opaManagedObjectGuard(pin)
             opaRequire(!assoc(pin->number localPins) "Duplicate logical pin.")
             pinDef = assoc(pin->number nth(2 definition))
             opaRequire(pinDef "Logical pin has no physical definition.")
-            netName = if(pin->net then opaManagedName(pin->net->name) else "")
+            netData = opaLibraryLogicalNet(pin)
+            netName = car(netData)
             ; A physical pin is fixed against independent motion within its
             ; package. The symbol query already checks fixed children and test
             ; points; do not turn every ordinary package into a fixed component.
             localPins = cons(list(pin->number netName nth(2 pinDef)) localPins)
             intrinsic = cons(list("pin" pin->number netName pin->use opaProps(pin)
-                axlDBIsReadOnly(pin)) intrinsic)
+                axlDBIsReadOnly(pin) cadr(netData)) intrinsic)
             when(placed
+                pinLabels = foreach(mapcar text axlDBGetAttachedText(pin)
+                    opaRequire(text->parent == pin && text->layer == "PACKAGE GEOMETRY/PIN_NUMBER"
+                        "Unowned or unsupported physical-pin label.")
+                    opaManagedLabel(text pin->number))
+                opaRequire(equal(opaSortedData(pinLabels)
+                    opaSortedData(foreach(mapcar label nth(8 pinDef) opaManagedLabelPose(label origin angle))))
+                    "Physical pin labels differ from the protected definition/pose.")
                 opaRequire(member(pin nativePins) && pin->component == component &&
                     pin->parent == symbol && pin->name == nth(1 pinDef) &&
                     pin->definition && pin->definition->name == nth(1 pinDef) &&
-                    !pin->isExploded && !pin->isThrough && !pin->isMech &&
+                    !pin->isExploded && equal(pin->isThrough nth(7 pinDef)) && !pin->isMech &&
                     !pin->isMirrored && !pin->testPoint && !pin->bondpad &&
                     opaOrthogonal(pin->rotation) == mod(angle + nth(3 pinDef) 360) &&
                     equal(opaPoint(pin->xy) opaWorld(nth(2 pinDef) origin angle)) &&
@@ -625,13 +828,13 @@ procedure(opaManagedComponent(component definitions padstacks)
                     "Native physical pin is not the intended definition/pose.")
                 padstack = assoc(nth(1 pinDef) padstacks)
                 expectedPads = nth(2 padstack)
-                physicalPads = opaSortedData(foreach(mapcar pad pin->pads opaManagedPad(pad)))
+                physicalPads = opaSortedData(foreach(mapcar pad pin->pads opaManagedPad(pad pin->xy pin->rotation)))
                 opaRequire(equal(physicalPads expectedPads) &&
-                    member(opaManagedPad(axlDBGetPad(pin "TOP" "REGULAR")) expectedPads)
-                    "Native pin pad geometry differs from its protected padstack.")
+                    member(opaManagedPad(axlDBGetPad(pin "TOP" "REGULAR") pin->xy pin->rotation) expectedPads)
+                    opaManagedPadMismatch(expectedPads physicalPads))
                 pins = cons(list(pin->number opaPoint(pin->xy) pin->rotation
                     physicalPads opaProps(pin) axlDBIsReadOnly(pin)
-                    if(axlDBIsFixed(pin) then t else nil)) pins)
+                    if(axlDBIsFixed(pin) then t else nil) pinLabels) pins)
                 pinState = cons(list(pin->number axlDBIsReadOnly(pin)
                     if(axlDBIsFixed(pin) then t else nil)) pinState)))
         opaRequire(length(localPins) == length(nth(2 definition))
@@ -984,8 +1187,10 @@ procedure(opaManagedAllFigures(design boardShapes)
             when(component->symbol
                 allowed = append(allowed copy(component->symbol->children))
                 allowed = append(allowed copy(component->pins))
+                foreach(pin component->pins
+                    allowed = append(allowed copy(axlDBGetAttachedText(pin))))
                 foreach(child component->symbol->children
-                    unless(child->objType == "line"
+                    unless(member(child->objType '("line" "text"))
                         allowed = append(allowed copy(child->segments))))))
         foreach(shape boardShapes
             allowed = append(allowed copy(shape->segments))
@@ -1502,6 +1707,8 @@ procedure(opaManagedReadFrame(@optional librarySetup)
             list("property-dictionary" opaManagedPropertyDictionary())
             list("board" opaBoardPath units axlVersion('fullVersion) opaProps(design)
                 opaManagedBox(axlGetParam("paramDesign")->bBox)))
+        unless(librarySetup
+            common = cons(list("support-definitions" opaManagedSupportDefinitions(design)) common))
         when(librarySetup
             common = cons(list("library-search-paths" axlGetVariable("psmpath")
                 axlGetVariable("padpath")) common))
@@ -1691,10 +1898,35 @@ procedure(opaManagedPlacementPolicy(frame)
     t
 )
 
+procedure(opaManagedDifference(before after @optional path)
+    let((index result left right label)
+        unless(path path = "common")
+        unless(equal(before after)
+            if(listp(before) && listp(after) && length(before) == length(after) then
+                index = 0
+                while(index < length(before) && !result
+                    left = nth(index before)
+                    right = nth(index after)
+                    label = if(listp(left) && left && stringp(car(left))
+                        then car(left) else sprintf(nil "%d" index))
+                    result = opaManagedDifference(left right strcat(path "/" label))
+                    index = index + 1)
+            else
+                left = opaStable(before)
+                right = opaStable(after)
+                result = sprintf(nil "%s expected=%s actual=%s" path
+                    substring(left 1 min(strlen(left) 150))
+                    substring(right 1 min(strlen(right) 150)))))
+        result
+    )
+)
+
 procedure(opaManagedOnlyTargetChanged(before after refdes target angle)
-    let((old current touched previousDerived currentDerived previousNet)
-        opaRequire(equal(before->common after->common) &&
-            length(before->components) == length(after->components) &&
+    let((old current touched previousDerived currentDerived previousNet difference)
+        difference = opaManagedDifference(before->common after->common)
+        opaRequire(equal(before->common after->common)
+            strcat("Protected data changed: " if(difference then difference else "unknown")))
+        opaRequire(length(before->components) == length(after->components) &&
             assoc(refdes before->components) && assoc(refdes after->components)
             "Inventory, definitions, connectivity, rules or other protected common data changed.")
         foreach(old before->components

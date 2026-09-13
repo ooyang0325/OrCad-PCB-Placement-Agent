@@ -32,7 +32,7 @@ function run(request) {
                 status: "indeterminate", error: "Local worker exceeded its deadline.",
                 warning: "Only the worker was stopped. A native operation may have completed; use execution status, not replay.",
             });
-        }, 120000);
+        }, 300000);
         child.stdout.setEncoding("utf8");
         child.stderr.setEncoding("utf8");
         child.stdout.on("data", (chunk) => {

@@ -75,6 +75,7 @@ Bundled guidance IDs below are guidance references, not physical PDF citations.
 
 from copy import deepcopy
 from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR, localcontext
+from math import isqrt
 from pathlib import PureWindowsPath
 import re
 import time
@@ -178,7 +179,7 @@ def _board(value):
     _object(value, {
         "model", "board", "snapshot_id", "scene_digest", "outline", "keepin",
         "keepouts", "layers", "components",
-    }, {"outline_boundary", "keepin_boundary", "design_policy"})
+    }, {"outline_boundary", "keepin_boundary", "design_policy", "unverified_3d_attachments"})
     if value["model"] != "managed-board-v1":
         raise MissionError("A managed-board-v1 native model is required.")
     path = _string(value["board"], maximum=4096)
@@ -238,6 +239,11 @@ def _board(value):
     if len({part["refdes"] for part in components}) != len(components):
         raise MissionError("Duplicate native references.")
     result["components"] = components
+    if "unverified_3d_attachments" in value:
+        names = _names(value["unverified_3d_attachments"], nonempty=True)
+        if any(re.fullmatch(r"3D:.+/ACIS", name) is None for name in names):
+            raise MissionError("Only explicitly disclosed 3D/ACIS attachment exceptions are supported.")
+        result["unverified_3d_attachments"] = names
     if "design_policy" in value:
         from .design_policy import validate_policy
 
@@ -398,7 +404,8 @@ def _net_boxes(part, pose):
 def _identity(board):
     return {
         **{key: board[key] for key in ("model", "board", "outline", "keepin", "keepouts", "layers")},
-        **{key: board[key] for key in ("outline_boundary", "keepin_boundary", "design_policy") if key in board},
+        **{key: board[key] for key in ("outline_boundary", "keepin_boundary", "design_policy",
+                                     "unverified_3d_attachments") if key in board},
         "components": [
             {key: part[key] for key in ("refdes", "package", "fixed", "mirrored", "bounds", "pins")}
             for part in board["components"]
@@ -589,6 +596,10 @@ class _Search:
         self.candidates = 0
         self.nodes = 0
         self.leaf_budget_failures = 0
+        self.sampled = False
+        self.domains = {}
+        self.sampled_refs = set()
+        self.static_obstacles = ()
         self.clearance = Decimal(requirements["clearance_mm"])
         self.boundaries = board_boundaries(board)
         self.room_bindings, _, _ = resolve_rooms(board)
@@ -611,6 +622,15 @@ class _Search:
 
     def domain(self, ref, obstacles):
         part = self.parts[ref]
+        room = self.room_bindings.get(ref)
+        key = (tuple(part["bounds"]), tuple(room["bounds"]) if room is not None else None,
+               tuple(obstacles))
+        if key in self.domains:
+            domain, sampled = self.domains[key]
+            if sampled:
+                self.sampled_refs.add(ref)
+            return domain
+        self.static_obstacles = tuple(obstacles)
         # Limit the grid with extents, then test every footprint against both
         # complete contours. A larger keepin never permits an off-board pose.
         boundary = (
@@ -619,13 +639,13 @@ class _Search:
             min(item.bounds[2] - item.error for item in self.boundaries),
             min(item.bounds[3] - item.error for item in self.boundaries),
         )
-        room = self.room_bindings.get(ref)
         if room is not None:
             room_box = _box(room["bounds"])
             boundary = (max(boundary[0], room_box[0]), max(boundary[1], room_box[1]),
                         min(boundary[2], room_box[2]), min(boundary[3], room_box[3]))
         grid = Decimal(self.requirements["grid_mm"])
         domain = []
+        sampled = False
         for angle in ANGLES:
             local = _bounds(part, {"x": "0", "y": "0", "angle": angle})
             lo_x = int(((boundary[0] + self.clearance - local[0]) / grid).to_integral_value(rounding=ROUND_CEILING))
@@ -635,8 +655,12 @@ class _Search:
             count = max(0, hi_x - lo_x + 1) * max(0, hi_y - lo_y + 1)
             if count > self.limits["max_candidates"] - self.candidates:
                 raise _SearchLimit("lattice_domain_exceeds_max_candidates")
-            for iy in range(lo_y, hi_y + 1):
-                for ix in range(lo_x, hi_x + 1):
+            stride = max(1, isqrt(count // 64) + 1) if count > 4096 else 1
+            sampled |= stride > 1
+            xs = sorted(set(range(lo_x, hi_x + 1, stride)) | ({hi_x} if hi_x >= lo_x else set()))
+            ys = sorted(set(range(lo_y, hi_y + 1, stride)) | ({hi_y} if hi_y >= lo_y else set()))
+            for iy in ys:
+                for ix in xs:
                     self.check(candidate=True)
                     x, y = grid * ix, grid * iy
                     # Translated origins must remain in the wire decimal range.
@@ -647,7 +671,40 @@ class _Search:
                             and (room is None or inside_room(box, room, self.clearance))
                             and not any(_collides(box, obstacle, self.clearance) for obstacle in obstacles)):
                         domain.append((x, y, angle, box))
+        self.domains[key] = (domain, sampled)
+        if sampled:
+            self.sampled = True
+            self.sampled_refs.add(ref)
         return domain
+
+    def contact_candidates(self, ref, obstacles):
+        """Snap obstacle-contact candidates to the requested lattice, never coarsen the design grid."""
+        grid = Decimal(self.requirements["grid_mm"])
+        room = self.room_bindings.get(ref)
+        seen = set()
+        for angle in ANGLES:
+            local = _bounds(self.parts[ref], {"x": "0", "y": "0", "angle": angle})
+            for obstacle in obstacles:
+                xs = (obstacle[0] - self.clearance - local[2], obstacle[2] + self.clearance - local[0],
+                      obstacle[0] - local[0], obstacle[2] - local[2])
+                ys = (obstacle[1] - self.clearance - local[3], obstacle[3] + self.clearance - local[1],
+                      obstacle[1] - local[1], obstacle[3] - local[3])
+                snapped_x = {grid * (x / grid).to_integral_value(rounding=r)
+                             for x in xs for r in (ROUND_FLOOR, ROUND_CEILING)}
+                snapped_y = {grid * (y / grid).to_integral_value(rounding=r)
+                             for y in ys for r in (ROUND_FLOOR, ROUND_CEILING)}
+                for y in sorted(snapped_y):
+                    for x in sorted(snapped_x):
+                        self.check(candidate=True)
+                        key = x, y, angle
+                        if key in seen or abs(x) >= Decimal(1000000000) or abs(y) >= Decimal(1000000000):
+                            continue
+                        seen.add(key)
+                        box = (x + local[0], y + local[1], x + local[2], y + local[3])
+                        if (not any(_collides(box, other, self.clearance) for other in obstacles)
+                                and all(boundary.contains_box(box, self.clearance) for boundary in self.boundaries)
+                                and (room is None or inside_room(box, room, self.clearance))):
+                            yield x, y, angle, box
 
     def ranked(self, ref, domain, poses):
         net_boxes, group_boxes, occupied = {}, {}, None
@@ -664,9 +721,16 @@ class _Search:
                 group = self.groups[other]
                 group_boxes[group] = _merge(group_boxes.get(group), box)
         ranked = []
-        for candidate in domain:
+        candidates = domain
+        if ref in self.sampled_refs:
+            candidates = [*domain, *self.contact_candidates(ref, [*self.static_obstacles, *obstacles])]
+        seen = set()
+        for candidate in candidates:
             self.check(candidate=True)
             x, y, angle, box = candidate
+            if (x, y, angle) in seen:
+                continue
+            seen.add((x, y, angle))
             if any(_collides(box, obstacle, self.clearance) for obstacle in obstacles):
                 continue
             wire = Decimal(0)
@@ -753,7 +817,9 @@ def _plan(board, requirements):
                 domains[ref] = search.domain(ref, obstacles)
                 if not domains[ref]:
                     blockers.append(_diagnosis(
-                        "no_legal_candidate", "No legal grid pose for this part with fixed constraints.", refdes=ref,
+                        "no_legal_candidate",
+                        "No legal candidate found; a sampled domain is not proof of infeasibility."
+                        if search.sampled else "No legal grid pose for this part with fixed constraints.", refdes=ref,
                     ))
                     break
             if not blockers:
@@ -786,6 +852,8 @@ def _plan(board, requirements):
             "protected_refdes": sorted(actual),
             "search": {
                 "algorithm": "bounded-first-feasible-orthogonal-grid-dfs",
+                "domain_sampling": "coarse-seeds-plus-grid-snapped-obstacle-contacts" if search and search.sampled else "exhaustive",
+                "domain_complete": not search.sampled if search else False,
                 "candidate_evaluations": search.candidates if search else 0,
                 "search_nodes": search.nodes if search else 0,
                 "leaf_budget_failures": search.leaf_budget_failures if search else 0,

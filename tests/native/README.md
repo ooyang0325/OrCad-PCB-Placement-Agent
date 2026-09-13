@@ -64,6 +64,15 @@ history guarantee. Native undo behavior needs the dedicated acceptance tests.
 
 ## Pure SMT pad-rule cases
 
+`through_pad_rules.il` adds 13 pure cases for round/square through drills,
+slots, offsets, actual drill size, malformed profiles and outward rounding.
+`padstack_readonly.il` runs those cases and reads all embedded padstacks of an
+exact bound all-unplaced board, checking before/after library signatures.
+It also records native constraints. This does not place, save or load anything.
+Both the 13 pure cases and unchanged 21-padstack readback passed on the isolated
+`board-b623m1m9` copy. The complete board subsequently passed full readback and
+46-target mission planning. None of those is a placement/rollback result.
+
 `smt_pad_rules.il` defines `opaManagedSmtPadRulesAcceptance()` for an opt-in
 native check after the current trusted adapter and helper have been loaded in
 the dedicated synthetic-fixture editor. It calls no board, library, placement

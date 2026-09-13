@@ -1,6 +1,6 @@
 {
   "name": "orcad-placement",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Local Windows Cadence PCB workflows with native images, reference grounding, and autonomous exact-proposal placement.",
   "author": {
     "name": "oo_yang",

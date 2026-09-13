@@ -31,9 +31,21 @@ The 0.10.0 reader accepts Cadence's `circle_drill` template label only when all
 nominal drill/slot dimensions are zero and the stack is otherwise hole-free,
 top-only and non-derived. It does not mistake a zero diameter for a hole-free
 slot: slot width/height and actual-hole/slot metadata are checked separately.
-True through-hole, drilled, slotted, external SHAPE/FLASH, donut and polygon
-pads remain unsupported. Extended SMT-variant native placement acceptance is
-pending; Python source-contract checks are not that proof.
+Version 0.11.0 additionally models TOP-to-BOTTOM round/square drills and
+oval/rectangular slots, including nominal/actual dimensions and drill offsets.
+A conservative envelope covers either slot-axis convention; the exact shape,
+orientation, plating and all native padstack attributes remain in its signature.
+Blind/buried, derived, microvia, multidrill, counterbore and backdrill features
+remain rejected. Embedded SHAPE/FLASH dependencies must resolve uniquely and
+their complete definitions remain protected.
+
+Reference-designator and pin-number labels retain ownership, text-block data,
+locations and rotations. Only their documented reference template substitution
+is dynamic. Package line/arc geometry and route keepouts retain native edges and
+envelopes; unsupported voided/dynamic geometry is not silently simplified.
+Physical pad paths are in board coordinates even though pad boxes are relative:
+the reader normalizes paths to pin-local half-DBUs before definition comparison.
+Full source signatures retain original numeric attributes separately.
 
 [Flat groups, placement rooms and named constraint sets](grouped-constraints.md)
 are preserved as native design policy. Positive plane layers are included in
@@ -62,7 +74,7 @@ Full placement inspection rejects missing/unloaded footprints. A separate
 all-unplaced library-setup binding can prepare exact missing definitions, but
 does not waive the full model's geometry checks.
 Package/unattached text, unmapped logical functions, mechanical-only
-symbols, through-hole/complex pads, unsupported package shapes, routed copper,
+symbols, unsupported advanced pads, unsupported package shapes, routed copper,
 nested/component groups, regions, oversized/unreadable attachments outside the
 explicit 3D-content exception, electrical Csets and class/region overrides are rejected.
 Do not remove design information or silently substitute a simpler board to
@@ -160,6 +172,16 @@ Optional search limits are `max_candidates`, `max_search_nodes` and
 100,000 and 30. Exhausting a bound means search is incomplete, not that no
 possible placement exists. The engine uses deterministic bounded
 first-feasible search, not a global-optimum claim.
+
+For more than 4,096 lattice positions per orientation, 0.11.0 uses coarse
+search seeds plus grid-snapped obstacle-contact candidates. It does not change
+the requested placement grid: every emitted pose remains exactly on that grid
+and passes the same full contour, room and collision checks. Domains shared by
+identical footprint bounds are cached within a plan. Evidence discloses
+`domain_sampling` and `domain_complete: false`; failure of sampled search never
+proves infeasibility. Small domains retain exhaustive enumeration.
+Explicit unverified-3D attachment names remain in the mission baseline and
+immutable identity; an altered exception list blocks continuation.
 
 ## Closed loop through MCP or app tools
 

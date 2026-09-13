@@ -117,6 +117,21 @@ machine-wide changes are outside PCB-design authority unless explicitly requeste
   small suite uses `-m unittest discover -s tests -v`.
 - Add or update relevant tests when changing behavior, using the established
   test framework if one exists.
+- A validation failure is a recovery step, not a reason to end the turn.
+  Report it as a non-blocking progress update, diagnose the exact cause, make
+  an in-scope correction and rerun the focused check. Do not request "continue"
+  or human approval for routine repair. Workers hand failures back internally
+  for recovery; the coordinator resumes the mission automatically after checks pass.
+- For uncertain native outcomes, pause only dependent mutations and reconcile
+  the exact operation; continue read-only diagnosis and independent work. Never
+  replay a consumed mutation, disable validation, weaken checks, clear pending
+  state or claim failed/unrun checks passed. Each retry needs a correction, new
+  evidence or a verified transient cause; repeated no-progress attempts trigger
+  a different approach or internal escalation, not identical retries.
+- Request user intervention only after available in-scope recovery is exhausted
+  and missing intent, ambiguous targets, scope changes or an external prerequisite
+  genuinely require it. Include the evidence and attempted remediation. A failed
+  check or retry budget alone is not a final blocker or a completion claim.
 - Report validation limitations explicitly rather than claiming unrun checks
   succeeded.
 - Python tests do not establish native SKILL, licensing, dispatch, DRC, or

@@ -45,7 +45,14 @@ with distinct `source_kind` values. Missing/stale/corrupt supplements produce
 warnings without disabling real bundled expertise. `pcb_reference_page` is
 strictly for original PDF excerpts and errors when no local index is configured.
 Install `.[knowledge]` only when extracting PDFs; catalog notices expose gaps.
-The server has twenty-two tools; all reference operations are read-only.
+The server has twenty-three tools; all reference operations are read-only.
+
+`pcb_review_proposal` returns one fresh native PNG plus an exact prepared target
+only when the full scene and board identity still match its preparation.
+It accepts `session`, `proposal`, and `kind` (`placement`, `library`, `save`).
+This avoids requiring two image downloads for live review; no claim of viewing
+an archived image is made. Scene mismatch, missing pixels or invalid bindings
+block review rather than dispatching a move.
 
 `pcb_inspect_libraries`, `pcb_prepare_library_load`, `pcb_load_libraries`, and
 `pcb_library_load_status` implement separate [library setup](library-loading.md).

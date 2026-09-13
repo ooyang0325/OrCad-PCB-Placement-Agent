@@ -16,6 +16,13 @@ not raw SKILL, shell commands, GUI automation, or a different integration.
 
 ## Review sequence
 
+For an exact proposal, prefer `pcb_review_proposal(session, proposal, kind)`.
+It returns a single fresh PNG only after full native scene equality with the
+prepared proposal. Inspect those pixels and its exact target; this fulfills
+the current visual checkpoint without also downloading an archived image.
+Do not claim the archive was seen. A changed scene or missing fresh PNG blocks
+review. The archived `pcb_read_proposal` path below is for historical evidence.
+
 Retrieve the exact archived preparation PNG with `pcb_read_proposal` using the
 supplied session, proposal and explicit kind (`placement`, `library`, `save`).
 View its pixels; it does not replace the fresh inspection below. Return findings

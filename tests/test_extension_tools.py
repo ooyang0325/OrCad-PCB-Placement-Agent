@@ -95,6 +95,7 @@ h = harness({ supported: false });
 for (const [name, parameters, action] of [
     ["pcb_placement_intake", { session: args.session }, "intake"],
     ["pcb_read_proposal", { ...args, kind: "library" }, "read-proposal"],
+    ["pcb_review_proposal", { ...args, kind: "placement" }, "review-proposal"],
 ]) {
     const tool = h.tools.find(t => t.name === name);
     const result = await tool.handler(parameters);

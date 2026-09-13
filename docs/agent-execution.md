@@ -42,6 +42,7 @@ raw SKILL does not inherit typed rollback or replay guarantees.
 | `pcb_sessions` | List recorded staged sessions and declared backend scope; neither proves live readiness |
 | `pcb_placement_intake` | Read the exact attached managed board and route missing packages to preparation or a supported board to planning; no mutation |
 | `pcb_read_proposal` | Return exact placement/library/save proposal data and its archived preparation PNG without native commands |
+| `pcb_review_proposal` | Return one fresh PNG and exact target only when its complete native scene equals the prepared proposal; no mutation or approval |
 | `pcb_inspect` | Read fresh native state around capture of only the bound Cadence window |
 | `pcb_inspection_status` | Report an unresolved read-only snapshot, or reconcile its exact request ID without replay |
 | `pcb_inspect_libraries` | Inspect the bound all-unplaced library-setup inventory and actual PNG; not full placement readiness |
@@ -69,6 +70,16 @@ an unrelated session just because it appears first in the list.
 not a current board inspection or authorization. The reviewer and executor can
 retrieve it themselves rather than asking the user to provide a filesystem PNG.
 An image-rendering failure is still a failed visual checkpoint.
+
+For live exact-proposal review, prefer `pcb_review_proposal` with the same three
+arguments. The controller compares the complete fresh native scene and board
+identity against the frozen preparation, then returns a single fresh PNG with
+`scene_matches_proposal: true`. The reviewer must view its pixels and assess
+the exact target; archived-image viewing is not additionally required on this
+path. This is not a target preview, execution authorization or proof of DRC.
+A changed scene returns `blocked`, not a new proposal or an automatic retry.
+The extension worker deadline is 300 seconds for multi-read actions; each
+controller round trip remains bounded to 60 seconds.
 
 For typed [library setup](library-loading.md), the executor may attach
 with `--library-setup` to a managed-board-v1 session with known nonempty logical

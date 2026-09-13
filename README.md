@@ -68,9 +68,14 @@ The [continuous mission driver](docs/placement-orchestration.md#continuous-missi
 continues supported handoffs without asking the user to relay proposals or say
 "continue". Editor setup remains separate from these typed MCP operations.
 Unsupported native geometry and missing image capability remain blockers.
-The reader also recognizes zero-drill SMT templates and preserves complete
-oblong/rounded/chamfered SMT-pad boundaries. Drilled and slotted pad placement
-is still unsupported; native acceptance of the extended SMT variants is pending.
+Version 0.11.0 extends native readback to full-span drilled/slotted padstacks,
+embedded flash/shape support, reference/pin labels and non-copper package arcs.
+Drill envelopes and complete signatures are preserved; placed pad paths are
+normalized from board coordinates to pin-local half-DBUs before comparison.
+Fine-grid planning uses disclosed sampled seeds plus exact grid-snapped contact
+candidates when full lattice enumeration is too large. The actual 46-component
+board now passes full read-only intake and complete target planning. Native
+placement/rollback and saved end-to-end acceptance remain distinct checkpoints.
 
 Arbitrary production boards, raw schematic/netlist import, arbitrary library
 acquisition, routing, Presto, headless execution, remote access, and arbitrary
