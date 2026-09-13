@@ -1,5 +1,5 @@
 ; Bounded imported-board model, not an import or library-loading interface.
-; Requires placement.il primitives and the adapter's exact approval/state gate.
+; Requires placement.il primitives and the adapter's exact proposal/state gate.
 ; Scope: embedded simple top SMT packages, rectangles/straight package linework,
 ; mapped logical functions, bounded attachments, default constraints, no routed copper.
 ; Native acceptance is still required. Installed API evidence:

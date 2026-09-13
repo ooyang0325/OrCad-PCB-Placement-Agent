@@ -12,7 +12,7 @@ from .diagnostics import ConfigurationError, default_runtime_directory
 from .capabilities import backend_capabilities
 from . import expertise
 from .protocol import MAX_BYTES, MAX_METADATA_BYTES, ProtocolError, Receipt, identifier, number
-from .proposals import approve_and_apply, load_proposal, propose, proposal_summary
+from .proposals import apply_proposal, load_proposal, propose, proposal_summary
 from .session import Session, SessionError, write_json
 from .transport import IndeterminateDelivery, TransportError
 from .save_proposals import prepare_save, load_save, approve_save, save_status
@@ -119,8 +119,7 @@ class AgentActions:
             "working_board": str(session.working),
             "snapshot_id": proposal["snapshot_id"],
             "visual": observation,
-            "approval_prompt": f"APPLY {digest}",
-            "warning": "Memory only. Native preconditions are rechecked after approval; this is not a save.",
+            "warning": "Memory only. Native preconditions are rechecked before dispatch; this is not a save.",
         }
 
     def dispatch(self, request: dict[str, object]) -> dict[str, object]:
@@ -168,7 +167,7 @@ class AgentActions:
             "inspect": {"action", "session"},
             "prepare": {"action", "session", "refdes", "x", "y", "angle"},
             "describe": {"action", "session", "proposal"},
-            "apply": {"action", "session", "proposal", "confirmation"},
+            "apply": {"action", "session", "proposal"},
             "execution-status": {"action", "session", "proposal"},
             "inspection-status": {"action", "session"} | ({"request"} if "request" in request else set()),
             "mission-plan": {"action", "session", "requirements_json"},
@@ -235,7 +234,7 @@ class AgentActions:
                 return {"status": "blocked" if plan["status"] == "blocked" else "mission_planned",
                         "mission": mission_id, "plan": plan,
                         "visual": observation,
-                        "warning": "A plan is not placement or approval. Review the complete targets and constraints."}
+                        "warning": "A plan is not placement dispatch. Review the complete targets and constraints."}
             mission_id = identifier(request["mission"])
             stored = session._read_json(f"mission-{mission_id}.json")
             if (set(stored) != {"schema_version", "nonce", "mission", "plan"}
@@ -313,11 +312,13 @@ class AgentActions:
             return {"status": "prepared", **self.describe(session, digest)}
         if action == "execution-status":
             load_proposal(session, request["proposal"])
-            approval_path = session.root / f"approval-{request['proposal']}.json"
-            if not approval_path.is_file():
-                return {"status": "not_dispatched", "message": "This proposal has no consumed approval."}
-            approval = session._read_json(approval_path.name)
-            request_id = identifier(approval.get("request_id"))
+            dispatch_path = session.root / f"dispatch-{request['proposal']}.json"
+            legacy_path = session.root / f"approval-{request['proposal']}.json"
+            record_path = dispatch_path if dispatch_path.is_file() else legacy_path
+            if not record_path.is_file():
+                return {"status": "not_dispatched", "message": "This proposal has not been dispatched."}
+            dispatch_record = session._read_json(record_path.name)
+            request_id = identifier(dispatch_record.get("request_id"))
             receipt_path = session.root / f"{request_id}.receipt.json"
             if receipt_path.is_file():
                 receipt = Receipt.from_dict(session._read_json(receipt_path.name))
@@ -325,14 +326,14 @@ class AgentActions:
                 if not (session.root / "pending.json").is_file():
                     return {
                         "status": "indeterminate",
-                        "message": "Approval was consumed but no terminal receipt is recorded. Inspect the dedicated board; do not replay.",
+                        "message": "Dispatch was consumed but no terminal receipt is recorded. Inspect the dedicated board; do not replay.",
                     }
                 pending = session._read_json("pending.json")
                 if pending.get("request_id") != request_id:
                     raise AgentActionError("A different operation is unresolved; nothing was replayed.")
                 receipt = session.reconcile(expected_request_id=request_id, expected_operation="apply")
             if receipt.nonce != session.nonce or receipt.request_id != request_id:
-                raise AgentActionError("Execution receipt does not match the consumed approval.")
+                raise AgentActionError("Execution receipt does not match the dispatch record.")
             result = {
                 "status": receipt.status, "receipt": receipt.to_dict(),
                 "message": "Recorded native outcome only; no command was resent.",
@@ -350,13 +351,11 @@ class AgentActions:
         description = self.describe(session, request["proposal"])
         if action == "describe":
             return {"status": "prepared", **description}
-        # This field comes from the extension's interactive UI, never from the
-        # model-visible tool schema. The existing single-use guard is reused.
-        receipt = approve_and_apply(session, request["proposal"], request["confirmation"])
+        receipt = apply_proposal(session, request["proposal"])
         result: dict[str, object] = {
             "status": receipt.status, "receipt": receipt.to_dict(),
             "proposal_sha256": request["proposal"],
-            "message": "Native outcome recorded; do not repeat this approval.",
+            "message": "Native outcome recorded; do not repeat this placement.",
         }
         from .visuals import VisualError
 

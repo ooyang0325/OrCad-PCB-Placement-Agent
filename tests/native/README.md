@@ -60,9 +60,10 @@ contain data only, never DBIDs, and are invalidated on native open/close/save
 triggers and adapter mutations. The documented 25.1 trigger interface provides
 no undo/redo hook; fresh full-scene comparison is always required. A manual
 change followed by undo back to the identical scene is not an observable event
-history guarantee. Native undo behavior needs the separately approved tests.
+history guarantee. Native undo behavior needs the dedicated acceptance tests.
 
 M1 does **not** execute apply, rollback, negative placement cases, native Undo,
 or revision Save. Those implementations must remain labelled unverified until
-exact mutation and save approvals are supplied and their native receipts,
-restoration, and persistence behavior are actually checked.
+exact autonomous mutation proposals and separate save approvals are exercised
+and their native receipts, restoration, and persistence behavior are actually
+checked.

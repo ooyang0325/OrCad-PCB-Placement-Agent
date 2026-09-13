@@ -6,16 +6,16 @@ These are development gates, not dates or GitHub milestones.
 |---|---|---|---|
 | M0 | Isolated environment and synthetic fixture | Python setup plus live, read-only licensed SKILL capability probe | Complete |
 | M1 | Reliable read-only live bridge | Externally triggered, correlated board snapshots from the selected editor | Complete |
-| M2 | Deterministic proposals and approval | Exact proposals with explicit approval and stale-scene rejection | Proposal flow ready; mutation-dependent cases pending approval |
-| M3 | Transactional placement | Approved movement, DRC rollback, accurate readback, and native Undo | Handlers implemented; native acceptance awaiting approval |
-| M4 | Explicit persistence and handoff | New-revision save/reopen, source preservation, and documented recovery | Save handler implemented; native acceptance awaiting approval |
+| M2 | Deterministic proposals and dispatch | Exact proposals with one-use dispatch and stale-scene rejection | Proposal flow ready; mutation-dependent cases pending native validation |
+| M3 | Transactional placement | Autonomous bounded movement, DRC rollback, accurate readback, and native Undo | Handlers implemented; native acceptance pending |
+| M4 | Explicit persistence and handoff | New-revision save/reopen, source preservation, and documented recovery | Save handler implemented; native acceptance pending |
 | M5 | Local PCB reference grounding | Local extraction/search with page citations, freshness and coverage notices | Complete |
 | M6 | Advisory expert agents | Read-only planner/reviewer profiles and bounded, citation-bearing context packets | Complete for Copilot-profile advisory workflow |
-| M7 | Visual agent execution | All profiles inspect actual Cadence PNGs; bounded tool execution obtains exact human approval and reports native/post-image outcomes | Visual/tools complete; first live move awaiting exact approval |
+| M7 | Visual agent execution | All profiles inspect actual Cadence PNGs; bounded tool execution autonomously applies exact reviewed proposals and reports native/post-image outcomes | Visual/tools complete; autonomous live-move acceptance pending |
 | M8 | Portable client distribution | Standard MCP, packaged native assets, safe setup/config generation, and Codex/Claude/Copilot plugin-marketplace manifests | Complete packaging; client prerequisites and repository access required |
 | M9 | Placement mission coordinator | Fourth agent/portable workflow delegates intake, floorplanning, batches and routing-aware review with explicit inventory/capability gates | Coordinator implemented; now backed by the M11 mission engine |
 | M10 | Bundled PCB expertise | Original source-grounded knowledge ships in packages and works through all agent/reference flows without books or an index | 36 cards and no-book retrieval implemented; native capability limits unchanged |
-| M11 | Executable zero-placed missions | Concrete all-component targets, initial placement, fresh-readback progression, routing screening and separate revision approval | Managed readback/PNG and six native reader cases pass; initial placement/mutation/save acceptance pending human approval |
+| M11 | Executable zero-placed missions | Concrete all-component targets, initial placement, fresh-readback progression, routing screening and separate revision approval | Managed readback/PNG and six native reader cases pass; initial placement/mutation/save acceptance pending |
 | M12 | Nonrectangular outlines | Native line/arc contours and whole-footprint concave containment through mission/proposal/readback | Native contour checks and read-only howto outline extraction pass; unrelated full-board restrictions remain |
 
 The environment doctor is an M0 prerequisite, not completion of M0.
@@ -28,7 +28,7 @@ the saved synthetic working copy in OrCAD X Professional Plus, 25.1-2025 S050.
 The original three-component fixture has six connected pins, R3 fixed,
 explicit placement bounds, enabled placement rules, and no baseline DRCs.
 The Python protocol, request lifecycle, bounded Windows transport, and exact
-proposal approval are implemented. Actual Windows-triggered snapshots and native
+proposal dispatch are implemented. Actual Windows-triggered snapshots and native
 request parsing now satisfy M1. Fine rule values and rectangle fill are included
 in fresh scene preconditions; they are not rounded or silently omitted.
 This does not establish native apply, DRC rollback, or persistence.
@@ -43,9 +43,9 @@ Apply changes memory only. Saving a new revision requires a separate request.
 No operation may overwrite a source board. Lost completion feedback is an
 indeterminate outcome, not a reason to replay a move.
 
-The user requested moving to agent expertise while native mutation approvals
-remain outstanding. M5/M6 are an independent advisory track and do not bypass
-M2-M4. They add no automatic Apply, Save, model-service credentials, or native
+M5/M6 are an independent advisory track and do not bypass M2-M4. Autonomous
+Apply remains bounded to exact reviewed proposals; these milestones add no
+automatic Save, model-service credentials, or native
 support for arbitrary production boards. See [the agent workflow](agents.md)
 and [the original PCB reasoning rubric](pcb-expertise.md).
 
@@ -58,23 +58,22 @@ client and is not a separate standalone model service.
 
 M7 extends the profiles with named bounded tools, not unrestricted shell access.
 The planner prepares visual proposals, the reviewer inspects them independently,
-and the execution role uses an interactive approval UI. Visual capture is
+and the execution role dispatches exact reviewed proposals autonomously. Visual capture is
 limited to the bound Cadence window; a lost image cannot trigger replay of a
-completed move. Native mutation acceptance still requires actual approval.
+completed move. Native mutation acceptance still requires a dedicated live run.
 
 Window-only capture and acknowledged display fitting are working on the
-dedicated native fixture. A visually grounded R1 proposal was prepared through
-the app tool, but its exact UI confirmation was not supplied. The tool denied
-Apply and execution status reports no dispatch. No native move or implicit
-save is claimed from that run.
+dedicated native fixture. Earlier evidence prepared a visually grounded R1
+proposal but did not dispatch it. No native move or implicit save is claimed
+from that run; autonomous Apply still needs a fresh live acceptance run.
 
 M8 supplies a portable root manifest, a Claude-compatible adapter manifest,
 shared skills, two marketplace catalogs, and a local stdio MCP implementation.
 The Python installer does not modify client settings or execution policy.
-Portable writes are read-only by default because an MCP elicitation response
-does not establish human provenance; only an operator may opt into genuine
-interactive use without auto-answer hooks. Actual client marketplace UIs and
-native write acceptance are not implied by package/SDK conformance.
+Portable placement writes autonomously dispatch exact visually bound proposals.
+Revision Save remains disabled by default because an MCP elicitation response
+does not establish human provenance. Actual client marketplace UIs and native
+write acceptance are not implied by package/SDK conformance.
 
 M9 adds supervision above the existing three workers. It must distinguish
 no logical design from zero physical placements, reject vacuous 0/0 completion,

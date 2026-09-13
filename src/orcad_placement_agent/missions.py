@@ -5,7 +5,7 @@ API: ``plan_mission(board, requirements)`` returns a JSON-compatible mission.
 receipts. ``next_candidate(fresh_board, mission)`` returns one absolute TOP pose,
 a ``{"status": "blocked", ...}`` diagnosis, or None for placement coverage only.
 None never means routed, DRC-clean, reviewed, or saved. The caller must obtain
-fresh native snapshots and enforce native write/approval preconditions.
+fresh native snapshots and enforce native write/state preconditions.
 
 Requirements (unknown keys/types are errors; missing inventories are blockers):
 
@@ -14,7 +14,7 @@ Requirements (unknown keys/types are errors; missing inventories are blockers):
   Native inventory must equal their union. Physically placed DNPs block planning.
 * grid_mm: required positive plain-decimal string, a multiple of the managed
   model's 0.0001 mm DBU; origin lattice is (0, 0). Targets are never rounded
-  after geometry checks or mission approval.
+    after geometry checks or mission review.
 * clearance_mm: required nonnegative plain-decimal string. This is the operator's
   geometric AABB spacing, NOT a derived electrical/safety clearance. The spacing
   applies to both outline/keepin contours, keepouts, reservations, and other footprints.
@@ -62,7 +62,7 @@ IDs. This is an integrity binding, not authentication or version control.
 Only current placed parts at protected/planned poses count. A changed baseline
 snapshot with a reused ID or scene digest is rejected. Stateless code cannot
 authenticate native provenance or detect replay of an arbitrary older snapshot;
-freshness/transaction/approval checks remain the parent's responsibility.
+freshness/transaction/replay checks remain the parent's responsibility.
 
 Search is first-feasible bounded depth-first search, not a global optimizer:
 anchors, critical support groups/nets, groups, then area-descending parts, with
@@ -921,13 +921,13 @@ def _status(board, mission, baseline, requirements):
             "readback_only": True,
             "snapshot_link": "baseline" if board["snapshot_id"] == baseline["snapshot_id"] else "later_snapshot",
             "native_freshness_must_be_verified_by_caller": True,
-            "approval_or_execution_receipts_count_as_placement": False,
+            "execution_receipts_count_as_placement": False,
         },
     }
 
 
 def next_candidate(board: dict, mission: dict) -> dict | None:
-    """Return exactly one unplaced TOP target; never approval or a native command."""
+    """Return exactly one unplaced TOP target; never dispatch a native command."""
     status = mission_status(board, mission)
     if status["blockers"]:
         return {
@@ -944,7 +944,7 @@ def next_candidate(board: dict, mission: dict) -> dict | None:
                 "status": "candidate", **deepcopy(target), "mission_id": mission["mission_id"],
                 "board": status["board"], "snapshot_id": status["snapshot_id"],
                 "scene_digest": status["scene_digest"], "sequence": index + 1,
-                "remaining_count": len(remaining), "requires_native_prepare_and_human_approval": True,
+                "remaining_count": len(remaining), "requires_native_prepare_and_review": True,
                 "placement": status["placement"],
             }
     return {

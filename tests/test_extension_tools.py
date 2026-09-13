@@ -37,14 +37,9 @@ function harness({ supported = true, answer = null, imageFailure = false } = {})
     return { requests, prompts, tools, apply: tools.find(t => t.name === "pcb_apply_placement") };
 }
 let h = harness({ supported: false });
-assert.equal((await h.apply.handler(args)).resultType, "denied");
-assert.equal(h.requests.length, 0);
+assert.equal((await h.apply.handler(args)).resultType, "success");
+assert.equal(h.requests[0].action, "apply");
 h = harness();
-assert.equal((await h.apply.handler(args)).resultType, "denied");
-assert.equal(h.requests.length, 1);
-assert.equal(h.requests[0].action, "describe");
-assert.equal(h.prompts[0].options.default, undefined);
-h = harness({ answer: `APPLY ${digest}` });
 assert.equal((await h.apply.handler({ ...args, confirmation: `APPLY ${digest}` })).resultType, "failure");
 assert.equal(h.prompts.length, 0);
 assert.equal(h.requests.length, 0);
@@ -58,16 +53,11 @@ assert.equal((await save.handler(args)).resultType, "success");
 assert.equal(h.requests[1].action, "apply-save");
 assert.equal(h.prompts[0].options.minLength, 69);
 h = harness({ answer: "yes" });
-assert.equal((await h.apply.handler(args)).resultType, "denied");
-assert.equal(h.requests.some(r => r.action === "apply"), false);
-h = harness({ answer: `APPLY ${digest}` });
 const outcome = await h.apply.handler(args);
 assert.equal(outcome.resultType, "success");
-assert.equal(h.requests[1].action, "apply");
-assert.equal(h.requests[1].confirmation, `APPLY ${digest}`);
+assert.equal(h.requests[0].action, "apply");
+assert.equal("confirmation" in h.requests[0], false);
 assert.equal(outcome.binaryResultsForLlm[0].type, "image");
-assert.match(h.prompts[0].message, /R1 \(10,10\)/);
-assert.match(h.prompts[0].message, /Memory only/);
 h = harness({ answer: `APPLY ${digest}`, imageFailure: true });
 const failedImage = await h.apply.handler(args);
 assert.equal(failedImage.resultType, "failure");
@@ -88,26 +78,12 @@ for (const [name, args, action] of [
     assert.equal((await tool.handler({ ...args, database: "outside" })).resultType, "failure");
 }
 assert.equal(h.prompts.length, 0);
-let modeChecks = 0;
-let dispatched = false;
-const switched = createPlacementTools({
-    canPrompt: async () => ++modeChecks === 1,
-    requestInput: async () => `APPLY ${digest}`,
-    imageResult: async () => ({ type: "image", mimeType: "image/png", data: "test" }),
-    run: async (request) => {
-        if (request.action === "apply") dispatched = true;
-        return { status: "prepared", summary: "R1 exact move", working_board: "working.brd",
-            warning: "Memory only", visual };
-    },
-}).find(t => t.name === "pcb_apply_placement");
-assert.equal((await switched.handler(args)).resultType, "denied");
-assert.equal(dispatched, false);
-console.log("Bounded extension approval and image-outcome cases passed.");
+console.log("Bounded autonomous placement and approved-save cases passed.");
 """
 
 
 class ExtensionToolTests(unittest.TestCase):
-    def test_model_cannot_supply_approval_or_bypass_missing_ui(self):
+    def test_placement_is_autonomous_while_save_remains_approved(self):
         node = os.environ.get("OPA_NODE") or shutil.which("node")
         if not node or not Path(node).is_file():
             self.skipTest("Set OPA_NODE to an existing Node.js 20+ executable for extension tests.")

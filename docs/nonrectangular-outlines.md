@@ -103,8 +103,8 @@ contours, unsupported curves, oversized boundaries, and ambiguous native
 outline identities remain explicit blockers. Internal exclusions can still
 use the supported rectangular package keepouts.
 
-Other managed-model restrictions, native acceptance requirements, exact human
-approval and separate Save authorization remain unchanged. A board rejected
+Other managed-model restrictions, native acceptance requirements, autonomous
+exact-proposal dispatch, and separate Save authorization remain unchanged. A board rejected
 for through-hole pads, missing footprints, unsupported text or other geometry
 does not become fully supported merely because its outline is now supported.
 Do not simplify or discard design objects to force acceptance.

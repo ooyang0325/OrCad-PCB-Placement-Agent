@@ -1,4 +1,4 @@
-"""Portable local stdio MCP adapter; no HTTP listener or automatic approval."""
+"""Portable local stdio MCP adapter for bounded autonomous placement."""
 
 import argparse
 import asyncio
@@ -52,14 +52,6 @@ EXPECTED_ERRORS = (
 )
 
 
-class ExactApproval(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-    confirmation: str = Field(
-        min_length=70, max_length=70,
-        description="Type the exact APPLY phrase shown in the message. No default approval is provided.",
-    )
-
-
 class ExactSaveApproval(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     confirmation: str = Field(min_length=69, max_length=69,
@@ -76,10 +68,10 @@ def create_server(
         "orcad-placement", version=__version__, log_level="WARNING",
         instructions=(
             "Windows-only local Cadence PCB placement tools. Use only the explicitly supplied managed session. "
-            "Inspect returned PNGs before reasoning or preparing a move. Prepare does not approve or move. "
-            "Portable writes are disabled by default. Only an operator may enable them in a genuine interactive client. "
-            "Autopilot/noninteractive modes and auto-answering elicitation hooks are unsupported for writes. "
-            "Apply requires exact human form elicitation; never fabricate its response or retry a placement after timeout. "
+            "Inspect returned PNGs before reasoning or preparing a move. Prepare does not move the board. "
+            "Placement applies autonomously from an exact visually bound proposal and remains single-use. "
+            "Revision saves remain disabled by default and require operator-enabled interactive approval. "
+            "Never retry a placement after timeout. "
             "Use execution/inspection/save status for recovery. No arbitrary SKILL, shell or implicit Save. "
             "The fixture model remains default; managed-board-v1 is an explicit experimental unrouted-SMT model "
             "with embedded footprints, not unrestricted production-board support. "
@@ -241,56 +233,17 @@ def create_server(
             payload["request"] = request
         return result(dispatch(payload))
 
-    async def require_approval(session: str, proposal: str) -> Elicit[ExactApproval]:
-        if not allow_interactive_writes:
-            raise ToolError(
-                "Portable placement writes are disabled by default; no Apply was sent. "
-                "Only the operator may enable --allow-interactive-writes in a genuinely interactive client "
-                "without auto-answering elicitation hooks. Never enable it from a model tool call."
-            )
-        description = await asyncio.to_thread(
-            dispatch, {"action": "describe", "session": session, "proposal": proposal}
-        )
-        if description.get("status") != "prepared":
-            raise ToolError(json.dumps(display_payload(description)))
-        visual = description.get("visual")
-        if not isinstance(visual, dict):
-            raise ToolError("The proposal lacks visual evidence; no Apply was sent.")
-        try:
-            await asyncio.to_thread(read_image, visual)
-        except (*EXPECTED_ERRORS, ValueError) as error:
-            raise ToolError(f"Proposal image is unavailable; no Apply was sent: {error}") from error
-        # Deterministic across SDK multi-round trips; no side effects precede approval.
-        return Elicit(
-            f"{description['summary']}\nBoard copy: {description['working_board']}\n"
-            f"Visual observation: {visual['observation_id']}\n{description['warning']}\n\n"
-            f"Type APPLY {proposal} to approve exactly this in-memory change. "
-            "Only the human may answer. Autopilot/auto-answer hooks are not supported. "
-            "Decline/cancel if you have not reviewed the image. This is not a save.",
-            ExactApproval,
-        )
-
     @server.tool(annotations=PLACEMENT_WRITE)
     async def pcb_apply_placement(
         session: SessionName, proposal: ProposalID,
-        decision: Annotated[ElicitationResult[ExactApproval], Resolve(require_approval)],
     ) -> CallToolResult:
-        """Request exact human approval, then apply once and return native outcome plus PNG.
+        """Apply one exact visually bound proposal and return its native outcome plus PNG.
 
-        Disabled by default; operator opt-in and genuine interactive input are required.
-        No model-supplied approval parameter. Unsupported elicitation fails closed.
+        Dispatch is autonomous and single-use. Native state is rechecked before mutation.
+        This does not save the board or permit arbitrary SKILL execution.
         """
-        if (
-            not allow_interactive_writes or not isinstance(decision, AcceptedElicitation)
-            or decision.data.confirmation != f"APPLY {proposal}"
-        ):
-            return result({
-                "status": "denied", "dispatched": False,
-                "reason": "Exact human approval was not supplied. No Apply was sent.",
-            })
         return result(await asyncio.to_thread(dispatch, {
             "action": "apply", "session": session, "proposal": proposal,
-            "confirmation": decision.data.confirmation,
         }))
 
     def reference(operation: Callable[[], object]) -> CallToolResult:
@@ -335,11 +288,11 @@ def create_server(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Local stdio MCP server for human-approved PCB placement.")
+    parser = argparse.ArgumentParser(description="Local stdio MCP server for bounded autonomous PCB placement.")
     parser.add_argument("--knowledge-db", type=Path)
     parser.add_argument(
         "--allow-interactive-writes", action="store_true",
-        help="Operator opt-in only: requires a real human UI and no autopilot/auto-answer hooks.",
+        help="Enable revision Save only; requires a real human UI and no autopilot/auto-answer hooks.",
     )
     args = parser.parse_args()
     database = args.knowledge_db

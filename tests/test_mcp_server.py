@@ -34,7 +34,7 @@ class FakeActions:
             }
         if action == "apply":
             if request["proposal"] in self.applied:
-                return {"status": "error", "error": "Proposal approval was already consumed."}
+                return {"status": "error", "error": "Proposal dispatch was already consumed."}
             self.applied.add(request["proposal"])
             return {"status": "applied", "visual": self.visual, "receipt": {"status": "applied"}}
         if action == "apply-save":
@@ -61,7 +61,7 @@ class MCPServerTests(unittest.IsolatedAsyncioTestCase):
             allow_interactive_writes=True,
         )
 
-    async def test_tool_catalog_hides_approval_and_exposes_images_and_recovery(self):
+    async def test_tool_catalog_exposes_autonomous_apply_images_and_recovery(self):
         from mcp import Client
 
         async with Client(self.server) as client:
@@ -98,20 +98,20 @@ class MCPServerTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(result.structured_content["capabilities"]["declaration_only"])
             self.assertEqual(result.structured_content["capabilities"]["initial_placement_model"], "managed-board-v1")
 
-    async def test_missing_elicitation_never_applies_in_either_protocol_mode(self):
-        from mcp import Client, MCPError
+    async def test_apply_is_autonomous_in_either_protocol_mode(self):
+        from mcp import Client
 
-        for mode in ("legacy", "auto"):
+        for mode, proposal in [("legacy", "a" * 64), ("auto", "c" * 64)]:
             with self.subTest(mode=mode):
                 async with Client(self.server, mode=mode) as client:
-                    with self.assertRaises(MCPError):
-                        await client.call_tool(
-                            "pcb_apply_placement", {"session": "board-fixture", "proposal": PROPOSAL}
-                        )
-        self.assertFalse(self.actions.applied)
-        self.assertFalse(any(call["action"] == "apply" for call in self.actions.calls))
+                    result = await client.call_tool(
+                        "pcb_apply_placement", {"session": "board-fixture", "proposal": proposal}
+                    )
+                    self.assertFalse(result.is_error)
+                    self.assertEqual(result.structured_content["status"], "applied")
+        self.assertEqual(self.actions.applied, {"a" * 64, "c" * 64})
 
-    async def test_default_install_cannot_write_even_with_an_auto_answering_client(self):
+    async def test_default_install_applies_without_elicitation(self):
         from mcp import Client
         from mcp.types import ElicitResult
         from orcad_placement_agent.mcp_server import create_server
@@ -126,11 +126,11 @@ class MCPServerTests(unittest.IsolatedAsyncioTestCase):
         async with Client(server, elicitation_callback=callback) as client:
             result = await client.call_tool("pcb_apply_placement", {
                 "session": "board-fixture", "proposal": PROPOSAL,
-                "allow_interactive_writes": True,
             })
-            self.assertTrue(result.is_error)
+            self.assertFalse(result.is_error)
+            self.assertEqual(result.structured_content["status"], "applied")
         self.assertEqual(prompts, [])
-        self.assertEqual(self.actions.calls, [])
+        self.assertEqual(self.actions.applied, {PROPOSAL})
 
     async def test_save_requires_separate_human_input_and_is_disabled_by_default(self):
         from mcp import Client
@@ -162,72 +162,22 @@ class MCPServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.actions.applied)
         self.assertEqual(self.actions.saved, {PROPOSAL})
 
-    async def test_decline_cancel_and_wrong_answers_never_apply(self):
+    async def test_legacy_approval_parameters_do_not_reach_dispatch(self):
         from mcp import Client
-        from mcp.types import ElicitResult
 
-        for action, content in [
-            ("decline", None), ("cancel", None),
-            ("accept", {"confirmation": "APPLY " + "c" * 64}),
-        ]:
-            with self.subTest(action=action):
-                async def callback(_context, params):
-                    self.assertIn(f"APPLY {PROPOSAL}", params.message)
-                    self.assertNotIn("default", params.requested_schema["properties"]["confirmation"])
-                    return ElicitResult(action=action, content=content)
-
-                async with Client(self.server, elicitation_callback=callback) as client:
-                    result = await client.call_tool(
-                        "pcb_apply_placement", {"session": "board-fixture", "proposal": PROPOSAL}
-                    )
-                    self.assertTrue(result.is_error)
-                    self.assertEqual(result.structured_content["status"], "denied")
-        self.assertFalse(self.actions.applied)
-
-    async def test_model_cannot_inject_the_hidden_approval_parameter(self):
-        from mcp import Client
-        from mcp.types import ElicitResult
-
-        prompts = []
-
-        async def callback(_context, params):
-            prompts.append(params.message)
-            return ElicitResult(action="decline")
-
-        async with Client(self.server, elicitation_callback=callback) as client:
+        async with Client(self.server) as client:
             result = await client.call_tool("pcb_apply_placement", {
                 "session": "board-fixture", "proposal": PROPOSAL,
                 "confirmation": f"APPLY {PROPOSAL}",
                 "decision": {"action": "accept", "data": {"confirmation": f"APPLY {PROPOSAL}"}},
             })
-            self.assertTrue(result.is_error)
-        self.assertEqual(len(prompts), 1)
-        self.assertFalse(self.actions.applied)
-
-    async def test_exact_fake_ui_answer_is_the_only_path_to_fake_apply(self):
-        from mcp import Client
-        from mcp.types import ElicitResult
-
-        for mode, proposal in [("legacy", "a" * 64), ("auto", "c" * 64)]:
-            with self.subTest(mode=mode):
-                prompts = []
-
-                async def callback(_context, params):
-                    prompts.append(params.message)
-                    return ElicitResult(action="accept", content={"confirmation": f"APPLY {proposal}"})
-
-                async with Client(self.server, mode=mode, elicitation_callback=callback) as client:
-                    result = await client.call_tool(
-                        "pcb_apply_placement", {"session": "board-fixture", "proposal": proposal}
-                    )
-                    self.assertFalse(result.is_error)
-                    self.assertEqual(result.structured_content["status"], "applied")
-                self.assertEqual(len(prompts), 1)
-        self.assertEqual(len(self.actions.applied), 2)
+            self.assertFalse(result.is_error)
+        self.assertEqual(self.actions.applied, {PROPOSAL})
+        apply = next(call for call in self.actions.calls if call["action"] == "apply")
+        self.assertEqual(set(apply), {"action", "session", "proposal"})
 
     async def test_image_failure_preserves_recorded_native_outcome(self):
         from mcp import Client
-        from mcp.types import ElicitResult
         from orcad_placement_agent.mcp_server import create_server
         from orcad_placement_agent.visuals import VisualError
 
@@ -236,11 +186,8 @@ class MCPServerTests(unittest.IsolatedAsyncioTestCase):
                 raise VisualError("Post-image unavailable")
             return self.png
 
-        async def callback(_context, _params):
-            return ElicitResult(action="accept", content={"confirmation": f"APPLY {PROPOSAL}"})
-
         server = create_server(lambda: self.actions, image_reader=image, allow_interactive_writes=True)
-        async with Client(server, elicitation_callback=callback) as client:
+        async with Client(server) as client:
             result = await client.call_tool(
                 "pcb_apply_placement", {"session": "board-fixture", "proposal": PROPOSAL}
             )
@@ -333,7 +280,7 @@ class MCPServerTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(result.is_error)
             self.assertEqual(result.structured_content["status"], "saved")
             self.assertFalse(result.structured_content["reopened"])
-        self.assertEqual(prompts, ["APPLY", "APPLY", "APPLY", "SAVE"])
+        self.assertEqual(prompts, ["SAVE"])
         self.assertEqual([request.operation for request in editor.requests], ["apply", "apply", "apply", "save"])
 
 

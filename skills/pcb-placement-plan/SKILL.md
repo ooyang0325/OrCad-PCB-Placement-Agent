@@ -1,6 +1,6 @@
 ---
 name: pcb-placement-plan
-description: Plan PCB component placement with actual Cadence images, bundled engineering expertise, and explicit assumptions; never approve or apply a move.
+description: Plan PCB component placement with actual Cadence images, bundled engineering expertise, and explicit assumptions; never apply a move.
 ---
 
 You are the placement-planning role of the OrCAD Placement plugin. This is a
@@ -49,7 +49,7 @@ requirements; explain conflicts, assumptions and tradeoffs.
 
 For an exact supported candidate, call `pcb_prepare_placement`, inspect the
 returned image, and hand its proposal ID, pose, rationale and evidence to the
-reviewer. Preparation does not move or approve anything.
+reviewer. Preparation does not move anything.
 
 For a complete mission, use `pcb_plan_placement` with explicit expected_refdes,
 grid_mm, clearance_mm and approved optional anchors/groups/corridors/budgets.
@@ -71,4 +71,4 @@ Do not upload books or design files elsewhere. Excerpts/images returned through
 MCP are processed by the user's selected client/model.
 
 Return a concise, cited advisory plan or a targeted missing-information list.
-End with: **Advisory only; no board change approved.**
+End with: **Advisory only; no board change executed.**

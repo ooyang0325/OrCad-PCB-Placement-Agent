@@ -31,7 +31,7 @@ This is geometry-reader/containment evidence, **not placement acceptance for
 the entire howto design**. Its full managed-board handshake still rejects
 unsupported `groups` before placement. No grouping, footprint, routing or
 other design data was removed to force acceptance. No Apply, Save, source
-overwrite, or write approval was performed. See
+overwrite, or write operation was performed. See
 [nonrectangular outline scope](nonrectangular-outlines.md).
 
 ## Managed-board mission implementation
@@ -73,16 +73,16 @@ reusable test source is `tests\native\managed_readonly.il`; local reports and
 binary test inputs remain outside Git.
 
 First-symbol creation, pose changes, DRC rollback, Undo and save/reopen still
-require exact interactive human authorization and native acceptance. The
-operator was unavailable when asked to switch from Autopilot to Interactive;
-no Apply or Save was inferred or dispatched. This is not yet a demonstrated
+require native acceptance. Placement now dispatches exact reviewed proposals
+autonomously; Save remains separately human-authorized. No Apply or Save was
+dispatched during the earlier read-only run, so this is not yet a demonstrated
 end-to-end Cadence placement result. See
 [the supported boundary and workflow](placement-missions.md).
 
-To help complete acceptance, keep the dedicated fixture window open, switch
-the chat to **Interactive**, and allow the executor to present a fresh exact
-proposal. The first documented case moves R1 from (10,10)/0 to (12,12)/90 in
-memory only. This is not blanket permission for later cases or Save. A full
+To help complete acceptance, keep the dedicated fixture window open and allow
+the executor to prepare, independently review, and autonomously dispatch a
+fresh exact proposal. The first documented case moves R1 from (10,10)/0 to
+(12,12)/90 in memory only. This does not authorize Save. A full
 initial-placement test additionally needs a separately prepared fixture with
 logical components present but physical symbols unplaced; the current fixture
 starts with all three symbols placed.
@@ -104,8 +104,8 @@ The working copy has three placed components, six connected pins, R3 fixed,
 millimeter units with 10,000 DBU/mm, and zero baseline DRCs. All three required
 placement-rule modes are enabled. Native bridge integration now satisfies M1.
 
-The Python request/receipt protocol, bounded Windows transport, exact
-proposal approval and uncertain-outcome handling are implemented. The native
+The Python request/receipt protocol, bounded Windows transport, exact one-use
+proposal dispatch and uncertain-outcome handling are implemented. The native
 read-only acceptance run covers 19 cases and 18 actual snapshots; 56 pure native
 checks cover parsing, exact coordinates/angles, lossless numeric scene identity,
 and required geometry fill. The complete scene is 7,977 characters within the
@@ -117,19 +117,18 @@ read-only copy. It contains 46 components. The fixture-scoped placement adapter
 explicitly rejected its unsupported topology; this is not support for editing
 arbitrary boards. Both the supplied original and copy were left unchanged.
 
-## Pending exact approval
+## Pending autonomous placement acceptance
 
 The later visual execution workflow now returns actual, fitted Cadence PNGs
 with matching before/after native snapshots. The three fixture components
 and keepout are visible; the capture is limited to the bound window, with no
 desktop fallback. An exact R1 proposal from (10, 10) / 0 degrees to
-(12, 12) / 90 degrees was prepared through the extension. Its interactive
-confirmation was not supplied, so Apply was denied before dispatch and the
-proposal has no consumed approval. This does not complete M3/M4.
+(12, 12) / 90 degrees was prepared through the extension under the former
+approval policy, so it was not dispatched. This does not complete M3/M4.
 
-The operator was asked to authorize the bounded synthetic-fixture acceptance
-batch below, but was unavailable. No approval was inferred, no Apply or Save
-request was executed, and no native mutation acceptance result is claimed.
+No request in the bounded synthetic-fixture acceptance batch below has been
+executed under the autonomous policy, and no native mutation acceptance result
+is claimed.
 
 | Target | Absolute pose in millimeters / degrees | Purpose |
 |---|---|---|

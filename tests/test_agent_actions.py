@@ -112,15 +112,6 @@ class AgentActionTests(unittest.TestCase):
                     self.service.dispatch(request)
         self.assertEqual(self.captures, 0)
 
-    def test_apply_without_exact_confirmation_never_moves(self):
-        result = self.prepare()
-        with self.assertRaises(SessionError):
-            self.service.dispatch({
-                "action": "apply", "session": self.board.name,
-                "proposal": result["proposal_sha256"], "confirmation": "yes",
-            })
-        self.assertEqual(self.session.requests, [])
-
     def test_missing_visual_binding_blocks_apply(self):
         result = self.prepare()
         (self.board / f"visual-proposal-{result['proposal_sha256']}.json").unlink()
@@ -128,11 +119,10 @@ class AgentActionTests(unittest.TestCase):
             self.service.dispatch({
                 "action": "apply", "session": self.board.name,
                 "proposal": result["proposal_sha256"],
-                "confirmation": result["approval_prompt"],
             })
         self.assertEqual(self.session.requests, [])
 
-    def test_mismatched_snapshot_cannot_be_reused_as_visual_approval(self):
+    def test_mismatched_snapshot_cannot_be_reused_as_visual_evidence(self):
         result = self.prepare()
         metadata_path = self.board / f"visual-{result['visual']['observation_id']}.json"
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
@@ -149,7 +139,6 @@ class AgentActionTests(unittest.TestCase):
         applied = self.service.dispatch({
             "action": "apply", "session": self.board.name,
             "proposal": result["proposal_sha256"],
-            "confirmation": result["approval_prompt"],
         })
         self.assertEqual(applied["status"], "applied")
         self.assertIn("visual_error", applied)
@@ -164,7 +153,7 @@ class AgentActionTests(unittest.TestCase):
     def test_visual_failure_does_not_prevent_recorded_execution_status(self):
         result = self.prepare()
         request_id = "d" * 32
-        write_json(self.board / f"approval-{result['proposal_sha256']}.json", {
+        write_json(self.board / f"dispatch-{result['proposal_sha256']}.json", {
             "proposal_sha256": result["proposal_sha256"], "request_id": request_id,
         })
         Path(result["visual"]["image_path"]).unlink()
@@ -179,7 +168,7 @@ class AgentActionTests(unittest.TestCase):
         result = self.prepare()
         apply_id = "d" * 32
         capture_id = "e" * 32
-        write_json(self.board / f"approval-{result['proposal_sha256']}.json", {
+        write_json(self.board / f"dispatch-{result['proposal_sha256']}.json", {
             "proposal_sha256": result["proposal_sha256"], "request_id": apply_id,
         })
         write_json(self.board / f"{apply_id}.receipt.json", Receipt(

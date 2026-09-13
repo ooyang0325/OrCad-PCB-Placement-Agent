@@ -1,4 +1,4 @@
-// Model-visible actions contain no shell strings, paths, or approval answers.
+// Model-visible actions contain no shell strings, paths, or save-approval answers.
 const sessionProperty = {
     type: "string",
     pattern: "^board-[A-Za-z0-9_-]{1,64}$",
@@ -18,7 +18,7 @@ function requireFields(args, fields) {
     if (!args || typeof args !== "object" || Array.isArray(args) ||
         Object.keys(args).length !== fields.length ||
         fields.some((field) => typeof args[field] !== "string")) {
-        throw new Error("Unexpected or missing tool fields; approval answers cannot be supplied by the model.");
+        throw new Error("Unexpected or missing tool fields.");
     }
     if (fields.includes("session") && !/^board-[A-Za-z0-9_-]{1,64}$/.test(args.session)) {
         throw new Error("Expected a managed session name, not a path.");
@@ -106,7 +106,7 @@ export function createPlacementTools({ run, requestInput, canPrompt, imageResult
             schema({ session: sessionProperty, mission: { type: "string", pattern: "^[0-9a-f]{32}$" } }),
             "mission-status", ["session", "mission"]),
         tool("pcb_prepare_next_placement",
-            "Prepare the next unplaced mission component using fresh state and an actual PNG. Human approval is still required separately for this exact proposal.",
+            "Prepare the next unplaced mission component using fresh state and an actual PNG for autonomous dispatch.",
             schema({ session: sessionProperty, mission: { type: "string", pattern: "^[0-9a-f]{32}$" } }),
             "mission-next", ["session", "mission"]),
         tool("pcb_inspect",
@@ -193,16 +193,17 @@ export function createPlacementTools({ run, requestInput, canPrompt, imageResult
                     resultType: "failure",
                     textResultForLlm: JSON.stringify({
                         status: "error", error: error.message,
-                        warning: "Do not infer rollback or retry. Query this proposal's placement/save status if approval was already submitted.",
+                        warning: "Do not infer rollback or retry. Query this Save proposal's status if approval was already submitted.",
                     }),
                 };
             }
         },
         };
     }
-    tools.push(approvedTool("pcb_apply_placement",
-        "Request exact human approval of a visually grounded placement, then apply once in memory. No model confirmation, automatic approval, arbitrary SKILL, or implicit save.",
-        "APPLY", "describe", "apply"));
+    tools.push(tool("pcb_apply_placement",
+        "Autonomously apply one exact visually grounded proposal in memory. Native state is rechecked and dispatch is single-use; no arbitrary SKILL or implicit save.",
+        schema({ session: sessionProperty, proposal: proposalProperty }),
+        "apply", ["session", "proposal"]));
     tools.push(tool("pcb_prepare_save",
         "Prepare a visually bound new-revision save proposal. No Save or approval occurs.",
         schema({ session: sessionProperty }), "prepare-save", ["session"]));

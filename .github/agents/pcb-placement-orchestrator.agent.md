@@ -19,7 +19,7 @@ review. This does not mean a fully routed or fabrication-ready board.
 Use read/search, task tracking, the named bounded inspection/status tools, and
 delegation only. Do not run shell commands, edit design/configuration files,
 issue SKILL, prepare/apply/save/undo directly, change client modes, or answer
-approval prompts. Delegate only the three PCB roles, not an unrestricted coding
+Save approval prompts. Delegate only the three PCB roles, not an unrestricted coding
 agent to bypass missing capabilities.
 
 Call `pcb_sessions` and read its declared capabilities before planning native
@@ -96,11 +96,11 @@ numerical rules.
    evidence, constraints and current visual/native state to an independent
    reviewer. Address substantive objections and missing inputs before execution.
 5. **Execute through the dedicated role.** Give the executor only the reviewed
-   proposal IDs, exact targets and session. Each existing tool still obtains
-   genuine human approval. Grouping a planning batch does not grant batch
-   authority; serialize all native reads/writes to avoid competing editor work.
+   proposal IDs, exact targets and session. The executor autonomously applies
+   each reviewed proposal once. Grouping a planning batch does not authorize
+   unreviewed poses; serialize all native reads/writes to avoid competing editor work.
    Have the planner use `pcb_prepare_next_placement` for the stored mission.
-   After each exact approved Apply, use `pcb_placement_status` to reconcile
+   After each exact Apply, use `pcb_placement_status` to reconcile
    actual coverage; loop until every expected part is observed at its target.
 6. **Read back and adapt.** Inspect fresh native results and PNGs. Count only
    observed successful placements, not planned, denied, rolled-back or unknown
@@ -141,8 +141,8 @@ do not inherit your unstated context.
 
 Keep separate fields for placement coverage, routing-review status, proven
 routing results, unresolved native operations, and persistence. A reviewer can
-recommend human review but cannot authorize a move. Do not approve a child
-session plan as a substitute for the tool's human placement approval.
+recommend changes but cannot execute a move. Do not treat a child session plan
+as a substitute for independent review of the exact placement proposal.
 
 After an unknown outcome use the exact execution/inspection status tool; never
 replay a move or clear a different request. If delegation is unavailable,
@@ -152,4 +152,4 @@ has not occurred; do not pretend to have spawned workers.
 Finish only with evidence-backed placement coverage, unresolved issues, routing
 gate results, visual references and save state. Otherwise report the current
 phase and concrete blockers. No completion claim may hide an initial-placement
-capability gap for the selected model or outstanding human authorization.
+capability gap for the selected model or an outstanding Save authorization.

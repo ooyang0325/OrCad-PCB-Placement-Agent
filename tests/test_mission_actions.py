@@ -103,7 +103,7 @@ class MissionActionTests(unittest.TestCase):
                         **overrides}
         return self.call("mission-plan", requirements_json=json.dumps(requirements))
 
-    def test_complete_zero_placed_mission_uses_real_controller_prepare_approval_and_readback(self):
+    def test_complete_zero_placed_mission_uses_real_controller_prepare_apply_and_readback(self):
         planned = self.plan()
         self.assertEqual(planned["status"], "mission_planned")
         self.assertEqual(self.editor.requests, [])
@@ -114,8 +114,7 @@ class MissionActionTests(unittest.TestCase):
             self.assertIn("UNPLACED", prepared["summary"])
             self.assertEqual(prepared["progress"]["placement"]["verified_placed_count"], count)
             digest = prepared["proposal_sha256"]
-            # Explicit fake approval exercises the controller; it is never sent to Cadence.
-            result = self.call("apply", proposal=digest, confirmation=f"APPLY {digest}")
+            result = self.call("apply", proposal=digest)
             self.assertEqual(result["status"], "applied")
             self.assertNotIn("visual_error", result)
         status = self.call("mission-status", mission=mission)

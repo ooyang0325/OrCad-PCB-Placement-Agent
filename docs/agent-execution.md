@@ -1,4 +1,4 @@
-# Visual, approval-gated agent placement
+# Visual autonomous agent placement
 
 The project extension in `.github\extensions\pcb-placement` connects the
 Copilot agents to the existing local Python controller. It exposes bounded
@@ -11,7 +11,7 @@ operations, not shell access or arbitrary SKILL evaluation.
 | PCB placement orchestrator | Inspect mission state, track phases and delegate the three workers; no direct prepare/apply/save authority |
 | PCB placement planner | Inspect the bound board visually and prepare an exact proposal |
 | PCB layout reviewer | Independently inspect current placement and read recorded execution outcomes |
-| PCB placement executor | Inspect, request exact interactive Apply or separate Save approval, and inspect the outcome |
+| PCB placement executor | Inspect, autonomously apply an exact reviewed proposal, request separate Save approval, and inspect outcomes |
 
 All four profiles include `pcb_inspect` and must examine the returned PNG.
 None has unrestricted `execute`, `edit`, or `web` tools. Only the orchestrator
@@ -33,7 +33,7 @@ must report the missing capability instead of using a shell/GUI workaround.
 | `pcb_placement_status` | Reconcile fresh native placement coverage and routing screening |
 | `pcb_prepare_next_placement` | Prepare one remaining mission target from fresh state and image |
 | `pcb_prepare_placement` | Prepare a supported exact pose, including unplaced managed-board components; no mutation |
-| `pcb_apply_placement` | Obtain the human's exact confirmation through the host UI, then apply once in memory |
+| `pcb_apply_placement` | Autonomously apply one exact visually bound proposal in memory |
 | `pcb_execution_status` | Read or reconcile the result of an already prepared proposal without replaying it |
 | `pcb_prepare_save` | Prepare a visually bound new-revision save proposal, without saving |
 | `pcb_save_revision` | Obtain separate exact human SAVE approval and save a new managed revision |
@@ -88,28 +88,21 @@ To attach an archived observation to a reference packet:
 The packet links the actual PNG and its matching saved snapshot. It remains
 archived evidence; use `pcb_inspect` for current state.
 
-## Approval and outcome
+## Dispatch and outcome
 
 The execution tool's model-visible schema contains only session and proposal
-identifiers. There is deliberately no `confirmation`, `approved`, `yes`, or
-override input for an agent to populate.
+identifiers. There is no placement confirmation or approval parameter.
 
-The extension reads the frozen proposal and visual binding, displays the exact
-refdes/pose/pivot/board, and asks the human to type `APPLY <proposal-id>` through
-the host's interactive elicitation UI. No default answer is supplied. Missing
-UI support, cancellation, unavailability, or a different answer means no Apply
-is dispatched. A planner recommendation or reviewer disposition is not consent.
+The extension reads the frozen proposal and visual binding, rechecks the exact
+refdes/pose/pivot/board, and autonomously dispatches it once. A planner
+recommendation alone is not executable: the exact proposal must complete the
+independent review handoff and all visual/native checks.
 
-The app extension checks that session mode is `interactive` before and after
-the prompt. It refuses Autopilot, plan, unknown modes, and missing mode/UI
-support, and never changes modes itself. This matters because clients can
-automatically handle elicitation in autonomous modes.
+The [portable MCP package](installation.md) enables bounded placement writes by
+default. `--allow-interactive-writes` applies only to the separately prepared
+revision Save flow; no installer or manifest enables unattended saves.
 
-The [portable MCP package](installation.md) is read-only by default and requires
-separate operator opt-in for interactive writes. Standard elicitation does not
-attest human provenance; auto-answer hooks and unattended modes are unsupported.
-
-After approval, the controller consumes the proposal once and the native
+Before dispatch, the controller consumes the proposal once and the native
 adapter rechecks the full scene. An accepted Windows message is not success:
 the explicit native receipt determines `applied`, `rejected`, `rolled_back`,
 or `indeterminate`. The tool then captures the resulting placement and compares
@@ -133,10 +126,9 @@ fixture. A real board rejected by that model does not become editable merely
 because its image is visible.
 
 Current native evidence establishes window capture, useful fitted framing,
-scene correlation, visually grounded proposal preparation, and denial when
-the exact UI response is absent. The first live move has not been dispatched
-because approval was not supplied. Apply/rollback/Undo/save acceptance must not
-be inferred from successful screenshots or fake-backend approval tests.
+scene correlation, visually grounded proposal preparation, and one-use
+autonomous dispatch in the controller. Apply/rollback/Undo/save acceptance must
+not be inferred from successful screenshots or fake-backend tests.
 
 ## Extension setup and validation
 
@@ -158,9 +150,9 @@ $env:OPA_NODE = '<absolute-path-to-node.exe>'
 .\.venv\Scripts\python.exe -m unittest tests.test_extension_tools tests.test_agent_actions tests.test_visuals
 ```
 
-Tests simulate human responses only in isolated fake backends. They do not
-authorize live operations. Native movement, rollback, Undo and persistence
-claims still require the separately approved live acceptance.
+Tests exercise autonomous placement and simulate Save responses only in
+isolated fake backends. They do not establish live operations. Native movement,
+rollback, Undo and persistence claims still require dedicated live acceptance.
 
 Images returned to Copilot are processed by the configured service/model, just
 like reference excerpts. Do not upload them or board files to additional

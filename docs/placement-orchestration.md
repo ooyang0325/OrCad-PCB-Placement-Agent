@@ -8,7 +8,7 @@ It manages an end-to-end placement **workflow**, including the prerequisites
 between logical design intake and a fully placed, routing-reviewed layout.
 The [executable mission engine](placement-missions.md) now supplies complete
 target planning, fresh-readback progress and one-at-a-time native proposal
-preparation. The coordinator is not an autorouter or approval authority.
+preparation. The coordinator is not an autorouter or direct execution role.
 
 Select **PCB placement orchestrator** in a client supporting repository agents,
 or invoke `pcb-placement-orchestrate` from the installed plugin. Supply the
@@ -39,7 +39,7 @@ operations. This is software scope, not proof of a live license or open board.
 | Operation | Current backend |
 |---|---|
 | Inspect the supported board and return PNG/native evidence | Supported after staging/attachment |
-| Move/rotate an already-placed original-fixture symbol | Implemented, subject to exact approval and native gates |
+| Move/rotate an already-placed original-fixture symbol | Implemented for autonomous exact-proposal dispatch, subject to native gates |
 | Import a schematic/netlist or resolve arbitrary libraries | Not implemented |
 | Initially place an unplaced logical component | Implemented for explicit managed-board-v1 with embedded simple SMT footprints; native acceptance pending |
 | Plan complete target sets and reconcile fresh placement coverage | Implemented, with pin-based routing proxies and explicit constraints |
@@ -53,7 +53,7 @@ Check the exact session model: the default fixture model does not gain initial
 placement. Missing libraries, empty logical designs and unsupported topology
 remain blockers. Do not bypass them with raw commands. An older server without
 a declaration is unknown, not implicitly capable. Native acceptance still
-requires a dedicated fixture and genuine interactive approval.
+requires a dedicated fixture and live validation.
 
 ## Mission intake
 
@@ -80,7 +80,7 @@ to manufacture a clean starting state.
 |---|---|---|
 | Intake and capability check | Coordinator: inventory, constraints, missing-input/backend queue | Expected assembly and supported operations are explicit |
 | Functional floorplan | Planner: regions, signal/power flow, anchors and alternatives | Reviewer accepts the assumptions for human engineering review |
-| Mechanical anchors | Planner/reviewer/executor loop | Exact supported poses, human approval and fresh native/visual readback |
+| Mechanical anchors | Planner/reviewer/executor loop | Exact reviewed poses and fresh native/visual readback |
 | Critical groups | Same loop: ICs/converters/clock/RF/analog with their confirmed local passives | Escape and critical loop/return requirements remain feasible |
 | Remaining groups | Same loop: dependency-ordered, bounded batches | Reserved routing channels, thermal and assembly access preserved |
 | Coverage closure | Coordinator + native evidence | Every expected in-scope refdes is observed placed; no unexplained missing/extra parts |
@@ -112,8 +112,9 @@ Each work package states:
 
 The planner returns alternatives, targets, rationale and tradeoffs. The
 reviewer returns independent findings and missing inputs, not authorization.
-The executor returns the native result and post-image; it does not invent a
-replacement pose or approve itself. A denied/rolled-back/unknown result never
+The executor autonomously dispatches the exact reviewed proposal and returns
+the native result and post-image; it does not invent a replacement pose. A
+rejected/rolled-back/unknown result never
 advances the placed inventory.
 
 If the host cannot delegate, use explicit sequential role handoffs and disclose
@@ -161,9 +162,9 @@ without the corresponding independent evidence.
 
 After an uncertain operation, reconcile its exact request/proposal before
 continuing. Never retry an Apply, clear unrelated pending state, substitute a
-different board, enable writes, change client modes, or answer approval prompts.
-Planning may run autonomously; physical changes still require the existing
-genuine interactive human-approval workflow.
+different board, change client modes, or answer Save approval prompts.
+Planning and exact reviewed placement dispatch may run autonomously; revision
+Save still uses the genuine interactive human-approval workflow.
 
 ## Optional original-source navigation
 

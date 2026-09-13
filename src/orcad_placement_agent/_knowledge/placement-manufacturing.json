@@ -817,12 +817,12 @@
       ],
       "principle": "Placement review, routing completion, design checks and saved release state are different milestones with different evidence. As an original workflow policy, report each milestone against an identified board revision and never translate a successful in-memory pose change into a claim that the design is routed, production-ready or persistently saved.",
       "applies_when": [
-        "Summarizing a placement review or any approved editor operation.",
+        "Summarizing a placement review or any dispatched editor operation.",
         "Preparing a handoff, manufacturing release or recovery after an uncertain tool outcome."
       ],
       "required_inputs": [
         "Exact board identity, revision, selected variant and scope of the review or authorized operation.",
-        "Current native state evidence and, for an edit, the exact human-approved proposal and fresh preconditions.",
+        "Current native state evidence and, for an edit, the exact reviewed proposal and fresh preconditions.",
         "Connectivity and applicable placement/routing check results, including unresolved issues and documented waivers.",
         "Save, reopen and output-generation evidence from an authorized workflow, when persistence or release is claimed.",
         "Revision-matched manufacturing and test deliverables required by the receiving parties."
@@ -830,7 +830,7 @@
       "checks": [
         "Report inventory and placement coverage explicitly; distinguish reviewed parts, missing required placements and intentional DNP states.",
         "Report unrouted connectivity and routing checks separately from component poses and placement-clearance results.",
-        "For a permitted edit, verify the exact intended native before/after change and approval scope; reconcile an uncertain outcome before considering another operation.",
+        "For a permitted edit, verify the exact intended native before/after change and proposal scope; reconcile an uncertain outcome before considering another operation.",
         "Keep DRC, ERC and manufacturing-review results tied to the checked state; record exclusions and unresolved findings rather than treating an image as a pass.",
         "Call a result persistent only when authorized save and reopen evidence establishes the intended state; otherwise label persistence unverified.",
         "Before a release claim, reconcile the saved native design with the BOM, assembly, fabrication and test outputs required for that same revision and variant."
@@ -845,8 +845,8 @@
         "A release package combines outputs from different board revisions or population variants."
       ],
       "limits": [
-        "Approval, precondition, outcome-reconciliation and persistence rules here are original software workflow policy, not capabilities specified by the books.",
-        "These cards grant no editor authority. Native placement requires an explicitly supported board model and exact human approval; raw logical import, arbitrary production-board editing and routing remain unsupported.",
+        "Proposal, precondition, outcome-reconciliation and persistence rules here are original software workflow policy, not capabilities specified by the books.",
+        "These cards grant no editor authority. Native placement requires an explicitly supported board model and an exact reviewed proposal; raw logical import, arbitrary production-board editing and routing remain unsupported.",
         "Python tests and textual reviews do not establish native SKILL execution, licensing, dispatch, DRC or persistent board state."
       ],
       "references": [

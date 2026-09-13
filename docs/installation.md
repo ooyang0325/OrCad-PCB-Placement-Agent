@@ -18,8 +18,9 @@ performed by the installer.
 - If the repository is private, each user needs GitHub access and working Git
   credentials. Never put tokens in plugin manifests or configuration samples.
 
-The plugin starts **read-only by default**: inspection, visual proposals,
-reference search and recovery are available. The original fixture is the
+The plugin enables autonomous placement only for exact visually bound proposals;
+inspection, proposal preparation, reference search and recovery remain
+read-only. Revision Save is disabled by default. The original fixture is the
 default native model. Experimental managed-board-v1 is explicitly selected at
 staging and is limited to documented unrouted, embedded simple SMT geometry;
 it is not arbitrary production-board support. Native acceptance is pending.
@@ -55,7 +56,7 @@ scripts; the installer does not bypass or change that policy.
 **PCB expertise is bundled:** the default install includes 36 original rules
 and needs no books, index, PDF parser, embedding service or extra model.
 Search and full-rule lookup work immediately after MCP registration. Cadence,
-design-specific inputs and native human-approval requirements remain separate.
+design-specific inputs and native Save-approval requirements remain separate.
 
 Optional local books can be indexed explicitly (this installs PDF dependencies):
 
@@ -193,7 +194,7 @@ Do not enable the shared MCP plugin and the existing project SDK extension for
 the same workflow simultaneously. The portable bundle does not register the
 project `.github\extensions` as an installed plugin extension.
 
-## Shared workflows and approval
+## Shared workflows and write authority
 
 The plugin bundles `pcb-placement-orchestrate` above `pcb-placement-plan`,
 `pcb-placement-review`, and `pcb-placement-execute`. Use the client's skill picker/slash interface;
@@ -206,26 +207,24 @@ managed-board model implement conditional initial placement; see
 
 Portable skills guide the client's main agent; they do not remove its other
 tools or act as a sandbox. Configure the host's permissions appropriately.
-The bounded MCP implementation and its default read-only gate are separate
-enforcement, while the existing app-specific agent profiles have their own
+The bounded MCP implementation autonomously dispatches only exact visually
+bound placement proposals, while the app-specific agent profiles retain their
 explicit tool allowlists.
 
 The MCP tool basenames are stable, but Claude plugin tools are scoped, for
 example `mcp__plugin_orcad-placement_orcad-placement__pcb_inspect`.
 Discover the host's loaded names; do not copy Claude prefixes into other clients.
 
-**Elicitation support is not proof of human input.** Copilot documents
-auto-handling elicitation in Autopilot, and Claude supports auto-answering hooks.
-Therefore all shipped launch/configuration paths leave portable writes disabled.
-Only an operator may add `--allow-interactive-writes` to server arguments after
-ensuring genuine interactive input and disabling auto-answer behavior.
-Never enable it through an agent tool call or in unattended/autonomous sessions.
-The server still requires the exact phrase, fresh native state, and one-use
-approval; these controls do not attest that an untrusted client used a human.
+Placement writes need no elicitation flag: `pcb_apply_placement` dispatches an
+exact reviewed proposal autonomously and once. Fresh native state and all
+bounded-model checks still apply.
 
-The app-specific SDK extension separately refuses Apply unless its session mode
-is `interactive`, checked before and after prompting. It never changes modes
-on the user's behalf. Native mutation acceptance remains separately gated.
+**Elicitation support is not proof of human input.** Therefore all shipped
+launch/configuration paths leave revision Save disabled. Only an operator may
+add `--allow-interactive-writes` after ensuring genuine interactive input and
+disabling auto-answer behavior. Never enable it through an agent tool call or
+in unattended/autonomous sessions. Native mutation acceptance remains a
+separate local validation milestone.
 
 ## Package safely and publish deliberately
 

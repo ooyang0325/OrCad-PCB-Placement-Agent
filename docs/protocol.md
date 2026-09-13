@@ -59,7 +59,7 @@ end,<request-id>
 | Status | Meaning |
 |---|---|
 | `snapshot` | A fresh read-only snapshot is available |
-| `applied` | The exact approved pose was applied in memory |
+| `applied` | The exact proposal pose was applied in memory |
 | `rejected` | The operation was not permitted |
 | `rolled_back` | A failed tentative change was rolled back and restoration established |
 | `saved` | The new revision was saved; not merely applied in memory |
@@ -87,15 +87,15 @@ Native floating-point scene values use explicit round-trip precision, including
 inside shared-list dictionary keys; ambient SKILL print precision must not
 merge different rule values. Every modeled rectangle also checks its expected
 filled/unfilled state. Unsupported fill or geometry is rejected rather than
-omitted from the approval preconditions.
+omitted from the placement preconditions.
 
-## Approval and uncertain outcomes
+## Dispatch and uncertain outcomes
 
 The controller stores the complete reviewed snapshot and target pose in a
-content-addressed proposal. The operator must enter `APPLY <full-SHA256>`.
-A one-use approval record is written before dispatch; retrying the same
-approval cannot send the move again. A native state change after review still
-causes rejection, even when the proposal file is unchanged.
+content-addressed proposal. Calling Apply writes a one-use dispatch record
+before sending the request; retrying the same proposal cannot send the move
+again. A native state change after review still causes rejection, even when the
+proposal file is unchanged.
 
 Saving requires a separate `SAVE <snapshot-id>` confirmation. It neither
 overwrites the original source nor implies that Apply automatically saved.

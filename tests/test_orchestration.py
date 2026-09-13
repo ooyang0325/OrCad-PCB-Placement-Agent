@@ -24,11 +24,13 @@ class OrchestrationContractTests(unittest.TestCase):
         for name in (
             "logical_design_import", "agent_undo",
             "arbitrary_board_writes", "route_generation",
-            "routing_feasibility_verification", "model_can_authorize_changes",
+            "routing_feasibility_verification", "human_approval_required",
         ):
             self.assertFalse(capabilities[name], name)
         self.assertTrue(capabilities["move_existing_component"])
-        self.assertTrue(capabilities["human_approval_required"])
+        self.assertTrue(capabilities["model_can_authorize_changes"])
+        self.assertTrue(capabilities["portable_writes_enabled_by_default"])
+        self.assertTrue(capabilities["save_human_approval_required"])
         self.assertNotIn("place", OPERATIONS)
         self.assertNotIn("import", OPERATIONS)
         self.assertNotIn("route", OPERATIONS)

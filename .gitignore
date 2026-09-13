@@ -19,3 +19,5 @@ dist/
 *.psm
 *.jrl
 *.log
+
+howto*

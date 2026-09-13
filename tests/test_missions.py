@@ -127,7 +127,7 @@ class MissionTests(unittest.TestCase):
             self.assertEqual(candidate["status"], "candidate")
             self.assertEqual(candidate["snapshot_id"], board["snapshot_id"])
             self.assertEqual(candidate["scene_digest"], board["scene_digest"])
-            self.assertTrue(candidate["requires_native_prepare_and_human_approval"])
+            self.assertTrue(candidate["requires_native_prepare_and_review"])
             board = fake_apply(board, candidate, revision)
             status = mission_status(board, mission)
             self.assertEqual(status["placement"]["verified_placed_count"], revision - 1)

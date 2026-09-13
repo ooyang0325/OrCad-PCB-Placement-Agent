@@ -39,7 +39,7 @@ function run(request) {
             stdout += chunk;
             if (Buffer.byteLength(stdout, "utf8") > outputLimit) {
                 child.kill();
-                finish(new Error("Worker response exceeded the bounded output limit; reconcile any approved operation."));
+                finish(new Error("Worker response exceeded the bounded output limit; reconcile any dispatched operation."));
             }
         });
         child.stderr.on("data", (chunk) => {

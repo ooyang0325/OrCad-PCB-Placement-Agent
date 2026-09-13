@@ -1,4 +1,4 @@
-"""Exact, inspectable proposals and one-use approval records."""
+"""Exact, inspectable proposals and one-use dispatch records."""
 
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
@@ -160,16 +160,14 @@ def proposal_summary(proposal: dict[str, object]) -> str:
     )
 
 
-def approve_and_apply(session: Session, digest: str, confirmation: str) -> Receipt:
+def apply_proposal(session: Session, digest: str) -> Receipt:
     proposal = load_proposal(session, digest)
-    if confirmation != f"APPLY {digest}":
-        raise SessionError("Exact proposal approval was not provided; nothing was sent.")
     request_id = uuid.uuid4().hex
-    write_json(session.root / f"approval-{digest}.json", {
-        "proposal_sha256": digest, "request_id": request_id, "confirmation": confirmation,
+    write_json(session.root / f"dispatch-{digest}.json", {
+        "proposal_sha256": digest, "request_id": request_id,
     })
-    # Creating the approval record consumes this proposal even if delivery becomes
-    # uncertain. A second invocation cannot replay the same approved mutation.
+    # Creating the dispatch record consumes this proposal even if delivery becomes
+    # uncertain. A second invocation cannot replay the same mutation.
     request = Request(
         session.nonce, request_id, "apply", proposal["snapshot_id"],
         proposal["refdes"], proposal["x"], proposal["y"], proposal["angle"],

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "orcad-placement-agent"
 version = "0.6.0"
-description = "Human-approved local placement access for Cadence PCB Editor"
+description = "Bounded autonomous placement access for Cadence PCB Editor"
 readme = "README.md"
 authors = [{name = "oo_yang"}]
 requires-python = ">=3.12"

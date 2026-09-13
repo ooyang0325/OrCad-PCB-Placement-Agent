@@ -7,16 +7,16 @@ Four repository-native Copilot profiles are provided:
 | `.github\agents\pcb-placement-orchestrator.agent.md` | Supervise intake, staged batches, routing-aware review and evidence-based completion across the three workers |
 | `.github\agents\pcb-placement-planner.agent.md` | Explain placement candidates, tradeoffs, evidence, and missing design inputs |
 | `.github\agents\pcb-layout-reviewer.agent.md` | Independently challenge a supplied plan and its citations |
-| `.github\agents\pcb-placement-executor.agent.md` | Apply an exact visually grounded proposal only after interactive human approval |
+| `.github\agents\pcb-placement-executor.agent.md` | Autonomously apply an exact reviewed, visually grounded proposal and inspect the outcome |
 
 All retain read/search access and add only their specific bounded PCB tools.
 Each can inspect the actual bound Cadence PNG; the planner can prepare a
 proposal, the reviewer can read execution status, and the executor can request
-human-approved Apply. The orchestrator alone has delegation/task-tracking
+autonomous Apply of an exact reviewed proposal. The orchestrator alone has delegation/task-tracking
 access and is instructed to use only those three PCB roles. None has
-unrestricted shell/edit/web access. Delegation is not approval authority.
+unrestricted shell/edit/web access. Delegation is not execution authority.
 See [visual agent execution](agent-execution.md) for tool setup, image provenance,
-approval, and failure behavior. Tool restrictions depend on the Copilot host
+dispatch, and failure behavior. Tool restrictions depend on the Copilot host
 honoring the profiles; native/CLI checks remain independent.
 
 These are prompts for the selected Copilot model, not a new model service or
@@ -96,7 +96,7 @@ and select **PCB placement planner** from the agent picker (the CLI provides
 the `/agent` picker). Give it your goal, design inputs and any optional packet.
 Then select **PCB layout reviewer** and supply the same evidence plus the
 planner's response. For an exact supported proposal, use **PCB placement
-executor** to inspect it and request interactive approval before Apply.
+executor** to inspect it and autonomously Apply after independent review.
 Reload/reopen the client if it has not discovered newly
 added profiles. This repository does not install a separate Copilot CLI.
 
@@ -130,10 +130,10 @@ run commands, or disclose data. They produce original synthesis with specific
 citations and must disclose missing evidence rather than inventing expert
 certainty.
 
-An advisory plan or favorable reviewer disposition does not approve a board
-change. The existing controller still requires an exact pose proposal,
-explicit approval, fresh native state, and supported geometry/rule checks.
-M3/M4 native mutation acceptance remains approval-gated.
+An advisory plan alone is not an executable board change. The existing
+controller still requires an exact reviewed pose proposal, fresh native state,
+and supported geometry/rule checks. M3/M4 native mutation acceptance remains a
+separate validation milestone.
 
 ## Synthesis source coverage
 

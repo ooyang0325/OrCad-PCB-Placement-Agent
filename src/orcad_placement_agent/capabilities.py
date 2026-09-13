@@ -30,9 +30,10 @@ def backend_capabilities() -> dict[str, object]:
         "agent_save_or_undo": True,
         "agent_save_revision": True,
         "agent_undo": False,
-        "human_approval_required": True,
-        "model_can_authorize_changes": False,
-        "portable_writes_enabled_by_default": False,
+        "human_approval_required": False,
+        "model_can_authorize_changes": True,
+        "portable_writes_enabled_by_default": True,
+        "save_human_approval_required": True,
         "initial_placement_requirements": (
             "Explicit managed-board-v1 staging; nonempty imported logical inventory and embedded simple "
             "top-side SMT footprints; simple closed outline/keepin contours and rectangular keepouts; "

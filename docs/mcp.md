@@ -47,30 +47,25 @@ board. `pcb_prepare_save`, `pcb_save_revision`, and `pcb_save_status` provide a
 separate visually grounded, one-use SAVE approval and outcome-reconciliation
 path. Save success is not automatic reopen verification.
 
-## Human approval across protocol versions
+## Autonomous placement and approved saves
 
-Portable installs are **read-only by default**. Only the operator may add
-`--allow-interactive-writes`, and only when the client uses genuine interactive
-input with no automatic elicitation answers. The flag is not a model tool
-argument, and no installer or marketplace manifest enables it.
+Portable installs allow bounded placement writes by default. Calling
+`pcb_apply_placement` with an exact visually bound proposal autonomously
+dispatches it once; no interactive input or server flag is required.
 
-Apply and Save have only `session` and `proposal` as model-visible arguments. A hidden
-SDK dependency requests an exact form response. It asks on both
-legacy MCP connections and the newer multi-round-trip protocol; the SDK binds
-continuation state to the originating request and question.
+Apply has only `session` and `proposal` as arguments. There is no placement
+confirmation, per-call override, or elicitation round trip. The controller
+still verifies the proposal, visual binding, session, source board, and fresh
+native scene before mutation.
 
-There is no default answer, model confirmation parameter, per-call override,
-or automatic fallback. The response must exactly match `APPLY <proposal-id>` or
-the separately prepared `SAVE <save-proposal-id>`.
-Decline/cancel, wrong answers, missing form elicitation, or an unavailable
-human do not dispatch Apply. The client must render genuine human input;
-protocol capability negotiation
-and an accepted response do not prove a human answered. Copilot Autopilot and
-Claude auto-answering elicitation hooks are specifically unsupported for writes.
-Annotations and automatic tool-call approval are not substitutes.
+Save remains separate. Only the operator may add `--allow-interactive-writes`,
+and only when the client uses genuine interactive input with no automatic
+elicitation answers. The flag is not a model tool argument, and no installer or
+marketplace manifest enables it. The Save response must exactly match
+`SAVE <save-proposal-id>`; decline, cancellation, missing UI support, or a wrong
+answer does not save.
 
-The existing controller still rechecks the visually bound proposal and native
-scene and consumes approval once. A transport retry cannot approve a second
+The controller consumes a placement dispatch once. A transport retry cannot send a second
 placement. Missing post-images preserve the recorded native outcome; use the
 bounded recovery tools rather than replaying Apply.
 
@@ -89,4 +84,4 @@ changes are required.
 
 Images and excerpts returned over MCP are processed by the selected client
 and model. This is local tool execution, not a promise of offline inference.
-Native mutation acceptance remains separately approval-gated.
+Native mutation acceptance remains a separate local validation milestone.

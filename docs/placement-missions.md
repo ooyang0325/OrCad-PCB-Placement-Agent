@@ -122,10 +122,10 @@ first-feasible search, not a global-optimum claim.
 4. Call `pcb_prepare_next_placement` with that mission handle. It inspects the
    current native scene, reconciles protected state and prepares exactly one
    remaining target with its image. An unplaced component is explicitly
-   identified as `UNPLACED` in the approval summary.
-5. The executor calls `pcb_apply_placement`. The existing genuine human UI must
-   authorize that exact proposal. Inspect the native result and post-image;
-   a plan, approval or successful dispatch does not increment placement coverage.
+   identified as `UNPLACED` in the proposal summary.
+5. The executor calls `pcb_apply_placement`, which autonomously dispatches that
+   exact reviewed proposal once. Inspect the native result and post-image; a
+   plan, review, or successful dispatch does not increment placement coverage.
 6. Repeat from fresh readback until `pcb_placement_status` reports all expected
    components actually placed at their intended poses. Changed inventory,
    footprints, nets, protected poses or planning geometry block continuation.

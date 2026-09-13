@@ -5,9 +5,8 @@ import unittest
 
 from orcad_placement_agent.protocol import ProtocolError, Receipt
 from orcad_placement_agent.proposals import (
-    approve_and_apply, load_proposal, propose, proposal_summary,
+    apply_proposal, load_proposal, propose, proposal_summary,
 )
-from orcad_placement_agent.session import SessionError
 
 
 class FakeSession:
@@ -71,28 +70,21 @@ class ProposalTests(unittest.TestCase):
         with self.assertRaises(ProtocolError):
             propose(self.session, self.snapshot(extra=extra), "R1", "12", "10", "0")
 
-    def test_modified_proposal_cannot_reuse_approval(self):
+    def test_modified_proposal_cannot_be_dispatched(self):
         digest, proposal = propose(self.session, self.snapshot(), "R1", "12", "10", "0")
         proposal["x"] = "99"
         (self.session.root / f"proposal-{digest}.json").write_text(
             json.dumps(proposal), encoding="utf-8"
         )
         with self.assertRaises(ProtocolError):
-            approve_and_apply(self.session, digest, f"APPLY {digest}")
+            apply_proposal(self.session, digest)
         self.assertEqual(self.session.requests, [])
 
-    def test_confirmation_must_bind_the_entire_proposal(self):
+    def test_proposal_can_be_dispatched_only_once(self):
         digest, _ = propose(self.session, self.snapshot(), "R1", "12", "10", "0")
-        for confirmation in ["yes", "", f"APPLY {'a' * 64}", f"APPLY {digest}\n"]:
-            with self.assertRaises(SessionError):
-                approve_and_apply(self.session, digest, confirmation)
-        self.assertEqual(self.session.requests, [])
-
-    def test_approved_proposal_can_be_dispatched_only_once(self):
-        digest, _ = propose(self.session, self.snapshot(), "R1", "12", "10", "0")
-        approve_and_apply(self.session, digest, f"APPLY {digest}")
+        apply_proposal(self.session, digest)
         with self.assertRaises(FileExistsError):
-            approve_and_apply(self.session, digest, f"APPLY {digest}")
+            apply_proposal(self.session, digest)
         self.assertEqual(len(self.session.requests), 1)
         request = self.session.requests[0]
         self.assertEqual((request.snapshot_id, request.refdes, request.x), ("2" * 32, "R1", "12"))

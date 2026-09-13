@@ -1,6 +1,6 @@
 ---
 name: pcb-placement-orchestrate
-description: Coordinate PCB planning, independent review, and human-approved execution from blank-board intake through routing-aware placement completion, with explicit capability and evidence gates.
+description: Coordinate PCB planning, independent review, and autonomous execution from blank-board intake through routing-aware placement completion, with explicit capability and evidence gates.
 disable-model-invocation: true
 ---
 
@@ -12,7 +12,7 @@ layout, not an automatically routed or manufacturing-certified PCB.
 
 Use the configured `orcad-placement` MCP server's bounded tools; host prefixes
 may differ. Start with `pcb_sessions` and read its declared `capabilities`.
-Listings and capability declarations are not live readiness or approval.
+Listings and capability declarations are not live readiness.
 Inspect only the operator's exact managed session with `pcb_inspect`.
 If capabilities are absent, consult the installed version's documentation and
 treat unknown support as unavailable.
@@ -28,9 +28,9 @@ bypass it.
 The synthetic fixture recipe is test setup, not a replacement for the user's
 design.
 
-Portable writes are read-only by default. Only the operator may enable genuine
-interactive writing; Autopilot, noninteractive modes and auto-answering hooks
-are unsupported. Neither this coordinator nor any worker may supply approval.
+Exact visually bound placement proposals dispatch autonomously. Revision saves
+remain separately human-approved. Neither this coordinator nor any worker may
+supply or bypass Save approval.
 
 ## Intake and inventory
 
@@ -71,9 +71,9 @@ state that independent review has not occurred.
    Keep each execution batch small and dependency-ordered.
 5. Send every exact candidate and its evidence to the independent reviewer.
    Resolve objections and missing inputs before handing proposal IDs to the
-   executor. A batch plan is not blanket permission to move its members.
-6. Serialize native editor use. The executor obtains exact human approval via
-   the existing tool; then inspect fresh receipts and PNGs, update inventory,
+   executor. A batch plan is not permission to substitute unreviewed poses.
+6. Serialize native editor use. The executor autonomously applies each exact
+   reviewed proposal; then inspect fresh receipts and PNGs, update inventory,
    and revisit the floorplan when constraints or congestion conflict.
    Have the planner call `pcb_prepare_next_placement` for one remaining mission
    target, execute its exact proposal, and call `pcb_placement_status` after
@@ -123,5 +123,5 @@ planner/reviewer revision cycles per batch before escalation.
 
 Finish with placement coverage, unresolved items, routing-review evidence,
 explicit routing-verification limits, images and save state. Otherwise report
-the concrete blocked phase. No worker opinion, plan approval, or general
-request to continue substitutes for the human placement authorization.
+the concrete blocked phase. No worker opinion, unreviewed plan, or general
+request to continue substitutes for an exact reviewed placement proposal.

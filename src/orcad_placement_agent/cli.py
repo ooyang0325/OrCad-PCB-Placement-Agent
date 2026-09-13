@@ -1,4 +1,4 @@
-"""Explicit, human-approved control of one dedicated PCB Editor session."""
+"""Bounded control of one dedicated PCB Editor session."""
 
 import argparse
 import json
@@ -16,7 +16,7 @@ from .diagnostics import (
 )
 from .probe import stage_probe
 from .protocol import ProtocolError, Request
-from .proposals import approve_and_apply, load_proposal, propose, proposal_summary
+from .proposals import apply_proposal, load_proposal, propose, proposal_summary
 from .session import Session, SessionError, stage_session
 from .transport import IndeterminateDelivery, TransportError, WindowsAPI
 from . import expertise, knowledge, references
@@ -29,7 +29,7 @@ from .agent_tools import AgentActionError, AgentActions, display_payload
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="orcad-placement-agent",
-        description="Local, human-approved access to classic PCB Editor 25.1.",
+        description="Local bounded access to classic PCB Editor 25.1.",
     )
     parser.add_argument("--version", action="version", version=__version__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -70,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
         ("snapshot", "Read fresh board state."),
         ("reconcile", "Read a late receipt without replaying the request."),
         ("propose", "Prepare and review an exact single-component pose."),
-        ("apply", "Ask for exact proposal approval, then apply in memory."),
+        ("apply", "Apply an exact proposal autonomously in memory."),
         ("save", "Ask before saving the current managed board to a new revision."),
     ]:
         sub = commands.add_parser(command, help=help_text)
@@ -212,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Error: {error}", file=sys.stderr)
         return 2
     except EOFError:
-        print("Approval cancelled: no confirmation was supplied.", file=sys.stderr)
+        print("Input cancelled: no confirmation was supplied.", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
         print("Interrupted. Reconcile any pending operation before continuing.", file=sys.stderr)
@@ -242,8 +242,7 @@ def _session_command(args: argparse.Namespace) -> int:
         proposal = load_proposal(session, args.proposal)
         print(proposal_summary(proposal))
         print(f"Working copy: {session.working}")
-        confirmation = input(f"Type APPLY {args.proposal} to authorize exactly this change: ")
-        receipt = approve_and_apply(session, args.proposal, confirmation)
+        receipt = apply_proposal(session, args.proposal)
     else:
         receipt = session.exchange(Request(session.nonce, uuid.uuid4().hex, "snapshot"))
         if receipt.status == "snapshot" and args.command == "propose":
@@ -252,7 +251,7 @@ def _session_command(args: argparse.Namespace) -> int:
             )
             print(proposal_summary(proposal))
             print(f"Proposal: {digest}")
-            print("Not applied. Apply requires approval and fresh native preconditions.")
+            print("Not applied. The apply command dispatches autonomously with fresh native preconditions.")
             return 0
         if receipt.status == "snapshot" and args.command == "save":
             snapshot_id = receipt.one("snapshot")[1]
